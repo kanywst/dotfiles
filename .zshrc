@@ -1,5 +1,8 @@
+# source .zshrc
+alias sz='source ~/.zshrc'
+
 # krew
-# export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
 
 # Syntax highlighting for better readability in the terminal
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
@@ -38,6 +41,7 @@ export PATH=$PATH:/Users/taniwa/go/bin/
 alias k='kubectl'
 alias ktx='kubectx'
 alias kns='kubens'
+alias kk='kubectl krew'
 
 # Alias for Docker command
 alias d='docker'
