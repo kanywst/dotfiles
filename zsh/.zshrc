@@ -17,7 +17,7 @@ export PATH=$(brew --prefix openssl)/bin:$PATH
 
 # Go
 export GOROOT="$(brew --prefix golang)/libexec"
-export PATH=$PATH:/Users/taniwa/go/bin/
+export PATH="$PATH:$HOME/go/bin/"
 
 # Rancher Desktop
 ### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
