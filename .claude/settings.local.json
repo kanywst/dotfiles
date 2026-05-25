@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(zsh -n /Users/user/dotfiles/zsh/.zshrc)",
+      "Skill(markdown-write)",
+      "Bash(grep -E \"^#{1,3} \" /Users/user/dotfiles/README.md)"
+    ]
+  }
+}
