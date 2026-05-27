@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./install.sh)",
+      "Bash(./install.sh:*)",
+      "Bash(stow:*)",
+      "Bash(zsh -n:*)",
+      "Bash(/usr/bin/time zsh:*)",
+      "Bash(actionlint:*)",
+      "Bash(shellcheck:*)",
+      "Bash(markdownlint-cli2:*)",
+      "Bash(npx markdownlint-cli2:*)",
+      "Bash(git config --global:*)",
+      "Bash(git maintenance:*)",
+      "Bash(mise:*)",
+      "Skill(markdown-write)",
+      "Skill(simplify)",
+      "Skill(update-config)",
+      "Skill(keybindings-help)",
+      "Skill(fewer-permission-prompts)"
+    ]
+  }
+}

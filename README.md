@@ -29,27 +29,37 @@ git clone https://github.com/kanywst/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 ```
 
-### 2. インストール
+### 2. インストール (GNU stow ベース)
 
 ```bash
 chmod +x install.sh
-./install.sh
+./install.sh           # stow を未導入なら自動で brew install
+./install.sh --restow  # symlink がズレた時の再リンク
+./install.sh --delete  # アンインストール
 ```
+
+パッケージは `zsh/`, `git/`, `starship/` の 3 つ。各ディレクトリ配下の構造が
+そのまま `$HOME` 配下にマップされる。`zsh/conf.d/` は `.stow-local-ignore` で
+除外しており、`zsh/.zshrc` から `$DOTFILES_ZSH_DIR/conf.d/*.zsh` を直接 source する。
 
 ### 3. 必須ツール
 
 ```bash
 # Core
-brew install git gh ghq fzf jq yq
+brew install git gh ghq fzf jq yq stow
 
-# Modern CLI
-brew install starship zoxide eza bat fd ripgrep git-delta btop atuin
+# Modern CLI (Rust)
+brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh ast-grep yazi zellij
+
+# Runtime version manager (nvm/pyenv/rustup を統一)
+brew install mise
 
 # Zsh plugins
-brew install zsh-autosuggestions zsh-syntax-highlighting
+brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
 
 # Git / GitHub TUI
-brew install lazygit
+brew install lazygit lazydocker
+gh extension install dlvhdr/gh-dash
 
 # Kubernetes
 brew install kubectl kubectx kube-ps1 kubecolor k9s krew
@@ -58,24 +68,13 @@ brew install kubectl kubectx kube-ps1 kubecolor k9s krew
 brew install --cask font-hack-nerd-font
 ```
 
-### 4. オプション (2026 で人気)
+### 4. mise 初期化 (Node/Python/Go/Rust)
 
 ```bash
-# 統合バージョン管理 (nvm/pyenv/rustup を一本化したいなら)
-brew install mise
-
-# ディレクトリごとの env (mise を入れるなら不要)
-brew install direnv
-
-# Docker/Podman TUI
-brew install lazydocker
-
-# tldr (man の代替)
-brew install tlrc
-
-# モダン curl
-brew install httpie
+mise use -g node@lts python@3.13 go@latest rust
 ```
+
+これで `~/.nvm`, `~/.nodebrew`, `pyenv` 経由は使わなくなる (削除はしなくても干渉しない)。
 
 ### 5. ローカル secrets
 
@@ -94,6 +93,37 @@ chmod 600 ~/.zshrc.local
 
 ```bash
 source ~/.zshrc
+```
+
+### 7. (オプション) nix-darwin で macOS 設定 + brew を宣言的に
+
+`flake.nix` は **macOS のシステム設定 + Homebrew bundle** を宣言的に管理する用途。
+`.zshrc` / shell 系は stow で管理してるので home-manager は使わない構成。
+
+**初回ブートストラップ:**
+
+```bash
+# 1. nix-darwin を 1 回だけ流す (今後は darwin-rebuild が常駐)
+sudo nix run nix-darwin/master#darwin-rebuild -- switch --flake ~/dotfiles#macbook
+
+# 2. 以降はこれだけ。flake.nix を編集して switch
+darwin-rebuild switch --flake ~/dotfiles#macbook
+```
+
+**何が起きるか:**
+
+- `system.defaults` の項目が macOS の `defaults write` 相当で書き込まれる (Dock 自動隠し、Dark Mode、Finder の隠しファイル表示など)
+- `homebrew.brews/casks` のリストに対して `brew install` が走る (リストに無いものは消えない — `onActivation.cleanup = "none"` のため安全)
+- `~/.zshrc` や `~/.config/starship.toml` には触らない (stow の管轄)
+
+**いま brew で入っているけど flake に書いてないもの:**
+
+`brew leaves` で実際にトップレベルで入れたパッケージ一覧が見える。気に入ったものを `flake.nix` の `brews = [...]` に足してから `darwin-rebuild switch` すると idempotent になる。
+
+**やめたい時:**
+
+```bash
+sudo nix run nix-darwin/master#darwin-uninstaller
 ```
 
 ## 使い方
@@ -266,13 +296,17 @@ extract release.tar.xz
 
 ## 設計メモ
 
+- **conf.d スタイル**: `.zshrc` は 30 行のローダ。実体は `zsh/conf.d/NN-*.zsh` に分割。
+  順序はファイル名のプレフィックスで決定 (00-env → 99-local)。
 - **PATH dedup**: `typeset -U path PATH` で自動的に重複を除去。
-- **NVM lazy-load**: `node`/`npm`/`npx` 初回呼び出し時に nvm を遅延ロード。
-  シェル起動が約 1 秒速くなる。
+- **mise 統合**: NVM/nodebrew/pyenv は撤退済み。`mise activate zsh` のみ。
+  `mise use -g <tool>@<version>` で runtime を切り替え。
 - **brew prefix キャッシュ**: `$BREW_PREFIX` を 1 度だけ計算。
-- **compinit 1 日 1 回**: `zcompdump` の rebuild を 24h ごとに制限して起動を高速化。
-- **secrets 分離**: `~/.zshrc.local` は git 管理外。tracked file に
-  API key を書かない。
+- **compinit 1 日 1 回**: `zcompdump` の rebuild を 24h ごとに制限。
+- **Atuin は Ctrl-R のみ**: `--disable-up-arrow` で ↑ は zsh の prefix-search を維持。
+- **stow ベース管理**: 各 package は `~/` 配下のレイアウトをミラー。 `conf.d/` は
+  ignore 対象で `.zshrc` から直接 source される。
+- **secrets 分離**: `~/.zshrc.local` は git 管理外。tracked file に API key を書かない。
 
 ## トラブルシューティング
 

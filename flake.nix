@@ -1,93 +1,107 @@
 {
-  description = "macOS system and home environment configuration";
+  description = "kanywst macOS — nix-darwin glue (macOS defaults + declarative Homebrew). Shell/zsh stays stow-managed.";
 
   inputs = {
-    # 最新のパッケージを利用するためunstableブランチを指定
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    
+
     nix-darwin = {
       url = "github:LnL7/nix-darwin";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
-    home-manager = {
-      url = "github:nix-community/home-manager";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = inputs@{ self, nix-darwin, nixpkgs, home-manager }: 
+  outputs = { self, nix-darwin, nixpkgs }:
   let
-    # Apple Siliconの場合は aarch64-darwin、Intelの場合は x86_64-darwin
     system = "aarch64-darwin";
-    username = "user"; # ★ここをご自身のMacのユーザー名に変更★
+    username = "user";
   in {
-    darwinConfigurations."macbook" = nix-darwin.lib.darwinSystem {
+    darwinConfigurations.macbook = nix-darwin.lib.darwinSystem {
       inherit system;
       modules = [
-        # --- OS (nix-darwin) の設定 ---
         ({ pkgs, ... }: {
-          services.nix-daemon.enable = true;
-          nix.settings.experimental-features = "nix-command flakes";
+          # Nix daemon + flakes
+          nix.settings.experimental-features = [ "nix-command" "flakes" ];
+          nixpkgs.config.allowUnfree = true;
 
-          # システムレベルのパッケージ
+          # The user nix-darwin manages on this Mac
+          system.primaryUser = username;
+          users.users.${username} = {
+            name = username;
+            home = "/Users/${username}";
+          };
+
+          # Tiny system-level package set. Most software comes via Homebrew
+          # below; only put things here that you want present even before brew
+          # bootstraps.
           environment.systemPackages = with pkgs; [ vim git ];
 
-          # macOSのシステム設定
+          # macOS preferences
           system.defaults = {
             dock.autohide = true;
+            dock.show-recents = false;
             NSGlobalDomain.KeyRepeat = 2;
             NSGlobalDomain.InitialKeyRepeat = 15;
+            NSGlobalDomain.AppleShowAllExtensions = true;
+            NSGlobalDomain.AppleInterfaceStyle = "Dark";
+            finder.AppleShowAllFiles = true;
+            finder.FXPreferredViewStyle = "Nlsv";
+            finder.ShowPathbar = true;
+            screencapture.location = "~/Downloads";
           };
 
-          # Homebrewとの連携 (GUIアプリ用)
+          # Declarative Homebrew. nix-darwin keeps brew in sync with this list
+          # on every `darwin-rebuild switch`. `cleanup = "zap"` removes anything
+          # not listed — keep that off ("none") until your brew list is fully
+          # mirrored here, otherwise it will uninstall packages.
           homebrew = {
             enable = true;
+            onActivation = {
+              autoUpdate = false;
+              upgrade = false;
+              cleanup = "none";
+            };
+            brews = [
+              "atuin"
+              "bat"
+              "btop"
+              "eza"
+              "fd"
+              "fzf"
+              "fzf-tab"
+              "gh"
+              "ghq"
+              "git-delta"
+              "glow"
+              "go"
+              "jq"
+              "k9s"
+              "kubecolor"
+              "kubectx"
+              "kubernetes-cli"
+              "lazydocker"
+              "lazygit"
+              "mise"
+              "ripgrep"
+              "starship"
+              "stow"
+              "tlrc"
+              "xh"
+              "yazi"
+              "yq"
+              "zellij"
+              "zoxide"
+              "zsh-autosuggestions"
+              "zsh-syntax-highlighting"
+            ];
             casks = [
-              "jetbrains-fleet"
-              "google-chrome"
+              "claude-code"
+              "font-hack-nerd-font"
+              "ghostty"
             ];
           };
 
-          # 後方互換性のための記述
-          system.stateVersion = 4;
+          system.stateVersion = 6;
         })
-
-        # --- ユーザー (home-manager) の設定 ---
-        home-manager.darwinModules.home-manager
-        {
-          home-manager.useGlobalPkgs = true;
-          home-manager.useUserPackages = true;
-          home-manager.users.${username} = { pkgs, ... }: {
-            
-            # ホームディレクトリ配下にインストールするツール群
-            home.packages = with pkgs; [
-              go
-              rustup
-              kubernetes-cli
-              k9s
-              gh
-              jq
-            ];
-
-            # Gitの設定
-            programs.git = {
-              enable = true;
-              userName = "kanywst";
-              userEmail = "your.email@example.com"; # ★ここを変更★
-            };
-
-            # Zshの設定
-            programs.zsh = {
-              enable = true;
-              enableCompletion = true;
-              syntaxHighlighting.enable = true;
-            };
-
-            # 後方互換性のための記述
-            home.stateVersion = "23.11";
-          };
-        }
       ];
     };
   };
