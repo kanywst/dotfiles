@@ -16,7 +16,8 @@ email = "niwatakuma@icloud.com"
 
 [ui]
 default-command = "log"
-pager = "delta"
+# Pager: array form lets us pass args. `[ui.pager-cmd]` doesn't exist in jj.
+pager = ["delta", "--paging=auto"]
 diff.format = "git"
 # delta is a pager (display-only) — using it as diff-editor would break
 # `jj split` / `jj squash -i`. Use jj's built-in terminal diff editor.
@@ -24,12 +25,13 @@ diff-editor = ":builtin"
 # jj has no `:builtin` text editor — that string only exists for diff-editor.
 # Omit ui.editor; jj falls back to $JJ_EDITOR / $EDITOR / $VISUAL / vi.
 
-[ui.pager-cmd]
-delta = ["delta", "--paging=auto"]
-
 [git]
-auto-local-bookmark = true
 push-bookmark-prefix = "kanywst/push-"
+
+# `git.auto-local-bookmark` is deprecated since jj 0.41; the replacement is
+# per-remote tracking. `*` matches all bookmark names.
+[remotes.origin]
+auto-track-bookmarks = "*"
 
 [snapshot]
 max-new-file-size = "10MiB"
