@@ -1,0 +1,4 @@
+# conf.d/ is sourced directly from $HOME/dotfiles/zsh/conf.d via .zshrc;
+# stow only needs to link .zshrc itself.
+^conf\.d$
+^conf\.d/
