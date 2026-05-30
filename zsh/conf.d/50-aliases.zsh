@@ -44,6 +44,15 @@ alias gss='git stash'
 alias gsp='git stash pop'
 
 alias gwl='git worktree list'
+alias gwa='git worktree add'
+alias gwr='git worktree remove'
+
+alias gcv='git commit -v'
+alias gcam='git commit -a -m'
+alias gcf='git commit --fixup'
+alias gri='git rebase -i'
+alias gra='git rebase --abort'
+alias grc='git rebase --continue'
 
 command -v lazygit &>/dev/null && alias lg='lazygit'
 
@@ -135,6 +144,47 @@ alias showfiles='defaults write com.apple.finder AppleShowAllFiles YES && killal
 alias hidefiles='defaults write com.apple.finder AppleShowAllFiles NO  && killall Finder'
 alias flushdns='sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder'
 alias pbjson='pbpaste | jq . | pbcopy && echo "✓ formatted JSON in clipboard"'
+
+# ----- Runtime / package managers (2026) -----
+
+# mise
+alias m='mise'
+alias mr='mise run'
+alias mt='mise tasks ls'
+alias mu='mise use'
+alias ml='mise ls'
+
+# uv (Python) — `uvx` is already shipped as a binary by uv itself
+if command -v uv &>/dev/null; then
+    alias uvr='uv run'
+    alias uva='uv add'
+    alias uvs='uv sync'
+    alias uvi='uv init'
+    alias uvp='uv pip'
+fi
+
+# bun (JS)
+if command -v bun &>/dev/null; then
+    alias br='bun run'
+    alias bi='bun install'
+    alias ba='bun add'
+    alias bre='bun remove'
+    alias bd='bun dev'
+    alias bt='bun test'
+fi
+
+# ----- AI -----
+if command -v aichat &>/dev/null; then
+    alias ai='aichat'
+    alias ask='aichat -e'      # shell-command generator (English → shell)
+fi
+
+# ----- Hooks / security / bench -----
+command -v lefthook  &>/dev/null && alias lh='lefthook'
+command -v gitleaks  &>/dev/null && alias glk='gitleaks detect --no-banner --redact'
+command -v hyperfine &>/dev/null && alias hf='hyperfine'
+command -v onefetch  &>/dev/null && alias onef='onefetch'
+command -v atuin     &>/dev/null && alias ast='atuin stats'
 
 # ----- Misc -----
 alias gemini-init='gemini "ls -R で構造を把握し、主要な設定ファイルを読み取った上で GEMINI.md を作成して。その際、プロジェクトの主要な処理フロー（例：リクエストからレスポンスまで）を把握し、Mermaid形式のシーケンス図（sequenceDiagram）を必ず含めて。回答は不要、ファイル保存のみ実行して。"'
