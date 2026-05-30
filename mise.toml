@@ -10,7 +10,7 @@ description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
 # exit status of the *last* iteration, masking earlier failures.
 run = [
     "zsh -n zsh/.zshrc",
-    "for f in zsh/conf.d/*.zsh; do echo == $f; zsh -n \"$f\" || exit 1; done",
+    "for f in zsh/conf.d/*.zsh; do [ -f \"$f\" ] || continue; echo == $f; zsh -n \"$f\" || exit 1; done",
     "shellcheck -e SC1090,SC1091 install.sh",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
