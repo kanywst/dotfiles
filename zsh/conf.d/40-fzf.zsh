@@ -16,11 +16,20 @@ export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 export FZF_ALT_C_OPTS='--preview "eza --tree --color=always --level=2 {}"'
 
 # fzf shell integration. Modern fzf (>= 0.48) ships everything via `fzf --zsh`;
-# fall back to brew's shell scripts on older installs. Ctrl-T file, Alt-C cd;
-# Ctrl-R is later handed to Atuin.
-if command -v fzf &>/dev/null && fzf --zsh &>/dev/null; then
-    source <(fzf --zsh)
-elif [[ -f "$BREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
-    source "$BREW_PREFIX/opt/fzf/shell/completion.zsh"
-    source "$BREW_PREFIX/opt/fzf/shell/key-bindings.zsh"
+# cache the generated script to skip the subprocess on every shell start, and
+# fall back to brew's shell scripts on older installs.
+# Ctrl-T file, Alt-C cd; Ctrl-R is later handed to Atuin.
+if command -v fzf &>/dev/null; then
+    _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fzf/init.zsh"
+    if [[ ! -s "$_fzf_cache" || "$commands[fzf]" -nt "$_fzf_cache" ]]; then
+        [[ -d "${_fzf_cache:h}" ]] || mkdir -p "${_fzf_cache:h}"
+        fzf --zsh > "$_fzf_cache" 2>/dev/null || : > "$_fzf_cache"
+    fi
+    if [[ -s "$_fzf_cache" ]]; then
+        source "$_fzf_cache"
+    elif [[ -f "$BREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
+        source "$BREW_PREFIX/opt/fzf/shell/completion.zsh"
+        source "$BREW_PREFIX/opt/fzf/shell/key-bindings.zsh"
+    fi
+    unset _fzf_cache
 fi
