@@ -1,0 +1,52 @@
+# Jujutsu (jj) — git-compatible VCS, synced via stow.
+# Docs: https://jj-vc.github.io/jj/latest/config/
+#
+# Recommended workflow: colocate jj with git so teammates keep using git
+# while you use jj on the same repo:
+#
+#   cd <repo>
+#   jj git init --colocate
+#
+# Useful commands (aliased in zsh/conf.d/50-aliases.zsh):
+#   jjs / jjl / jjn / jje / jjd / jjp
+
+[user]
+name = "kanywst"
+email = "niwatakuma@icloud.com"
+
+[ui]
+default-command = "log"
+pager = "delta"
+diff.format = "git"
+diff-editor = "delta"
+editor = ":builtin"
+
+[ui.pager-cmd]
+delta = ["delta", "--paging=auto"]
+
+[git]
+auto-local-bookmark = true
+push-bookmark-prefix = "kanywst/push-"
+
+[snapshot]
+max-new-file-size = "10MiB"
+
+[revsets]
+log = "@ | ancestors(immutable_heads().., 8) | trunk()"
+short-prefixes = "reachable(@, all())"
+
+[template-aliases]
+"format_short_id(id)" = "id.shortest(8)"
+
+# Aliases at the jj-CLI level (separate from shell aliases)
+[aliases]
+l    = ["log", "-r", "::@"]
+ll   = ["log"]
+s    = ["status"]
+d    = ["diff"]
+n    = ["new"]
+e    = ["edit"]
+sq   = ["squash"]
+push = ["git", "push"]
+fetch = ["git", "fetch"]
+sync = ["git", "fetch", "--all-remotes"]
