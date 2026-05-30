@@ -61,9 +61,10 @@ gi() {
 
 # fzf-powered process killer. `command ps` bypasses the ps→procs alias from
 # 30-modern-cli.zsh; procs lacks the BSD `-ef` flags this picker needs.
+# `--header-lines=1` pins the ps column header in fzf instead of dropping it.
 fkill() {
     local pid
-    pid="$(command ps -ef | sed 1d | fzf -m --header='[kill:process]' | awk '{print $2}')"
+    pid="$(command ps -ef | fzf -m --header-lines=1 --header='[kill:process]' | awk '{print $2}')"
     [[ -n "$pid" ]] && echo "$pid" | xargs kill -"${1:-9}"
 }
 
