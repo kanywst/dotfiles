@@ -21,7 +21,9 @@ export FZF_ALT_C_OPTS='--preview "eza --tree --color=always --level=2 {}"'
 # Ctrl-T file, Alt-C cd; Ctrl-R is later handed to Atuin.
 if command -v fzf &>/dev/null; then
     _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fzf/init.zsh"
-    _fzf_bin="${commands[fzf]:-}"  # empty if zsh/parameter not loaded
+    # `whence -p` is a zsh builtin (no module required) returning the path
+    # of an external command, or empty if there is none.
+    _fzf_bin="$(whence -p fzf 2>/dev/null)"
     # Regenerate when the cache doesn't exist OR the fzf binary is newer than
     # the cache; `-e` (existence) — not `-s` (size) — so a previously-failed
     # generation (empty sentinel below) doesn't make us retry every shell.
