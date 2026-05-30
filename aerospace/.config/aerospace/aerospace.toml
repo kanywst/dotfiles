@@ -94,7 +94,11 @@ backspace = ['close-all-windows-but-current', 'mode main']
 
 # Float specific apps that don't tile well
 [[on-window-detected]]
-if.app-id = 'com.apple.systempreferences'
+if.app-id = 'com.apple.SystemSettings'  # macOS Ventura+
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.apple.systempreferences'  # pre-Ventura, kept for back-compat
 run = 'layout floating'
 
 [[on-window-detected]]
