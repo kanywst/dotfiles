@@ -11,7 +11,6 @@
 #   20-prompt       Starship
 #   30-modern-cli   eza/bat/delta/btop/xh/yazi/zellij/sg
 #   40-fzf          fzf + Ctrl-T / Alt-C bindings (Ctrl-R later)
-#   45-1password    point SSH_AUTH_SOCK at 1Password agent if present
 #   50-aliases      nav/git/docker/k8s/system
 #   60-functions
 #   70-completions  compinit (rebuilds at most once a day)
