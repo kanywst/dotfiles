@@ -21,7 +21,8 @@ if command -v carapace &>/dev/null; then
         [[ -d "${_carapace_cache:h}" ]] || mkdir -p "${_carapace_cache:h}"
         # Atomic write: protects against half-written cache on Ctrl-C.
         _carapace_tmp="$(mktemp "${_carapace_cache}.XXXXXX")"
-        if carapace _carapace zsh > "$_carapace_tmp"; then
+        # 2>/dev/null silences carapace warnings to match fzf/direnv cache gen.
+        if carapace _carapace zsh > "$_carapace_tmp" 2>/dev/null; then
             mv -f "$_carapace_tmp" "$_carapace_cache"
         else
             rm -f "$_carapace_tmp"
