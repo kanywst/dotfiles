@@ -23,7 +23,15 @@ if command -v fzf &>/dev/null; then
     _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fzf/init.zsh"
     if [[ ! -s "$_fzf_cache" || "$commands[fzf]" -nt "$_fzf_cache" ]]; then
         [[ -d "${_fzf_cache:h}" ]] || mkdir -p "${_fzf_cache:h}"
-        fzf --zsh > "$_fzf_cache" 2>/dev/null || : > "$_fzf_cache"
+        # Atomic write: a Ctrl-C mid-generation leaves the old cache (or no
+        # cache) intact instead of a half-written file that fails to source.
+        _fzf_tmp="$(mktemp "${_fzf_cache}.XXXXXX")"
+        if fzf --zsh > "$_fzf_tmp" 2>/dev/null; then
+            mv -f "$_fzf_tmp" "$_fzf_cache"
+        else
+            rm -f "$_fzf_tmp"
+        fi
+        unset _fzf_tmp
     fi
     if [[ -s "$_fzf_cache" ]]; then
         source "$_fzf_cache"
