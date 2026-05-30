@@ -28,23 +28,28 @@ exec zsh -l
 ## What's inside
 
 - Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
-- Atuin Ctrl-R — sqlite-backed full-text history
-- mise + direnv — runtime pinning + per-directory env
+- Atuin — sqlite-backed history with daemon, workspace filter, `Ctrl-R`
+- mise + direnv — runtime pinning + per-directory env + repo tasks
 - uv / bun — fast Python + JS package management
 - nix-darwin — flake-driven macOS defaults + brew bundle
 - GNU stow — modular `conf.d` zsh, no plugin manager
 - Starship — k8s / docker / direnv / git status in the prompt
-- fzf + fzf-tab — preview-driven completion everywhere
+- fzf + fzf-tab + carapace — preview-driven completion across 500+ CLIs
 - lazygit / lazydocker / k9s — TUIs for the obvious things
 - ghq + fzf — `repo` jumps to anything on disk
+- Ghostty — terminal config tracked (theme, splits, mac-alt)
+- lefthook + gitleaks — fast parallel pre-commit hooks + secret scanning
+- aichat — multi-model LLM CLI in the shell
 
 ## Stack
 
 | Layer | Tool | Replaces |
 | --- | --- | --- |
 | Shell | zsh | — |
+| Terminal | ghostty | iTerm2 / Alacritty / wezterm |
 | Prompt | starship | oh-my-zsh themes |
-| History | atuin | bare `history` + Ctrl-R |
+| Completion | carapace + fzf-tab | per-tool completion scripts |
+| History | atuin (daemon) | bare `history` + Ctrl-R |
 | Listing | eza | ls |
 | Pager-cat | bat | cat |
 | Find | fd | find |
@@ -66,6 +71,11 @@ exec zsh -l
 | Per-dir env | direnv | hand-rolled `.env` sourcing |
 | Python pkgs | uv | pip / poetry / virtualenv |
 | JS runtime | bun | node + npm + tsx |
+| Tasks | mise tasks | Makefile / justfile |
+| Hooks | lefthook | husky / pre-commit (Python) |
+| Secrets scan | gitleaks | manual `grep -i secret` |
+| LLM CLI | aichat | one-off `curl` to API |
+| App Store | mas | manual GUI installs |
 | System | nix-darwin | manual `defaults write` |
 | Linker | GNU stow | hand-rolled `ln -s` scripts |
 
@@ -77,13 +87,18 @@ flowchart LR
     B --> Z[~/.zshrc]
     B --> G[~/.gitignore_global]
     B --> S[~/.config/starship.toml]
+    B --> AT[~/.config/atuin/config.toml]
+    B --> GT[~/.config/ghostty/config]
     Z -->|sources| C[conf.d/*.zsh]
-    C --> M[mise]
+    C --> M[mise + direnv]
     C --> F[fzf + atuin]
     C --> P[starship]
+    C --> CR[carapace]
     A -.->|optional| N[flake.nix]
     N -->|darwin-rebuild| H[Homebrew bundle]
     N -->|darwin-rebuild| D[macOS defaults]
+    A -.->|optional| LH[lefthook.yml]
+    LH --> HG[git hooks: zsh-n / markdownlint / gitleaks]
 ```
 
 `zsh/conf.d/` is intentionally excluded from stow
@@ -114,7 +129,7 @@ stow が未インストールなら `brew install stow` を自動で打つ。con
 
 ```bash
 # Core
-brew install git gh ghq fzf jq yq stow direnv
+brew install git gh ghq fzf jq yq stow direnv mas
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
@@ -122,6 +137,12 @@ brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
 
 # Runtime + package managers
 brew install mise uv bun
+
+# Completion + hooks + security
+brew install carapace lefthook gitleaks
+
+# LLM CLI
+brew install aichat
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -140,7 +161,22 @@ brew install --cask font-hack-nerd-font
 mise use -g node@lts python@3.13 go@latest rust
 ```
 
-### 5. Local secrets
+### 5. Repo tasks + hooks
+
+```bash
+mise tasks ls           # list repo-level mise tasks
+mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
+mise run install        # ./install.sh
+mise run darwin-switch  # darwin-rebuild switch
+mise run hooks          # lefthook install (writes .git/hooks/*)
+mise run scan           # gitleaks detect on the full tree
+```
+
+`lefthook.yml` runs zsh-syntax, shellcheck, markdownlint, and
+`gitleaks protect --staged` on pre-commit; `actionlint` + `nix flake check`
+on pre-push.
+
+### 6. Local secrets
 
 ```bash
 cat > ~/.zshrc.local <<'EOF'
@@ -150,7 +186,7 @@ EOF
 chmod 600 ~/.zshrc.local
 ```
 
-### 6. (Optional) nix-darwin
+### 7. (Optional) nix-darwin
 
 `flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
 する。`username` は `builtins.getEnv "USER"` で取得するので `--impure` が
