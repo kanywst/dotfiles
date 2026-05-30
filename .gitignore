@@ -1,0 +1,10 @@
+.DS_Store
+
+# Claude Code — local-only overrides (not synced across machines)
+.claude/settings.local.json
+.claude/.credentials.json
+
+# Editor / OS
+*.swp
+*.bak
+*.backup
