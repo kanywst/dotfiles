@@ -11,7 +11,10 @@ if command -v carapace &>/dev/null; then
     zstyle ':completion:*' format $'\e[2;37mCompleting %d\e[m'
     # Cache the generated init script so shell startup doesn't spawn carapace.
     _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
-    if [[ ! -s "$_carapace_cache" || "$commands[carapace]" -nt "$_carapace_cache" ]]; then
+    # `-e` (existence) — not `-s` (size) — so an empty failure-sentinel
+    # doesn't cause a retry every shell startup. The binary mtime check
+    # re-triggers regeneration after a real carapace upgrade.
+    if [[ ! -e "$_carapace_cache" || "$commands[carapace]" -nt "$_carapace_cache" ]]; then
         [[ -d "${_carapace_cache:h}" ]] || mkdir -p "${_carapace_cache:h}"
         # Atomic write: protects against half-written cache on Ctrl-C.
         _carapace_tmp="$(mktemp "${_carapace_cache}.XXXXXX")"
@@ -19,6 +22,7 @@ if command -v carapace &>/dev/null; then
             mv -f "$_carapace_tmp" "$_carapace_cache"
         else
             rm -f "$_carapace_tmp"
+            : > "$_carapace_cache"   # sentinel: tried & failed; don't retry
         fi
         unset _carapace_tmp
     fi
