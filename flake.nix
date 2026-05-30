@@ -39,14 +39,28 @@
           system.defaults = {
             dock.autohide = true;
             dock.show-recents = false;
+            dock.mineffect = "scale";
             NSGlobalDomain.KeyRepeat = 2;
             NSGlobalDomain.InitialKeyRepeat = 15;
             NSGlobalDomain.AppleShowAllExtensions = true;
             NSGlobalDomain.AppleInterfaceStyle = "Dark";
+            NSGlobalDomain.AppleICUForce24HourTime = true;
+            # Stop macOS from autocorrecting / capitalising code-y text.
+            NSGlobalDomain.NSAutomaticSpellingCorrectionEnabled = false;
+            NSGlobalDomain.NSAutomaticCapitalizationEnabled = false;
+            NSGlobalDomain.NSAutomaticDashSubstitutionEnabled = false;
+            NSGlobalDomain.NSAutomaticQuoteSubstitutionEnabled = false;
+            NSGlobalDomain.NSAutomaticPeriodSubstitutionEnabled = false;
+            # Disable press-and-hold accent menu so key repeat works in every app.
+            NSGlobalDomain.ApplePressAndHoldEnabled = false;
             finder.AppleShowAllFiles = true;
             finder.FXPreferredViewStyle = "Nlsv";
             finder.ShowPathbar = true;
+            finder.ShowStatusBar = true;
             screencapture.location = "~/Downloads";
+            screencapture.type = "png";
+            screencapture.disable-shadow = true;
+            loginwindow.GuestEnabled = false;
           };
 
           # Declarative Homebrew. nix-darwin keeps brew in sync with this list
@@ -61,9 +75,13 @@
               cleanup = "none";
             };
             brews = [
+              "ast-grep"
               "atuin"
               "bat"
               "btop"
+              "bun"
+              "direnv"
+              "dust"
               "eza"
               "fd"
               "fzf"
@@ -73,6 +91,7 @@
               "git-delta"
               "glow"
               "go"
+              "hyperfine"
               "jq"
               "k9s"
               "kubecolor"
@@ -81,10 +100,15 @@
               "lazydocker"
               "lazygit"
               "mise"
+              "onefetch"
+              "procs"
               "ripgrep"
+              "sd"
               "starship"
               "stow"
               "tlrc"
+              "tokei"
+              "uv"
               "xh"
               "yazi"
               "yq"
