@@ -53,7 +53,8 @@ style = "blue dimmed"
 [direnv]
 disabled = false
 symbol = "direnv "
-style = "bold orange"
+# starship's named-colour set is small; use a hex for orange.
+style = "bold #ff8700"
 format = "[$symbol$loaded/$allowed]($style) "
 
 [nodejs]
