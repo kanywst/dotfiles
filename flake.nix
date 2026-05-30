@@ -8,13 +8,35 @@
       url = "github:LnL7/nix-darwin";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # home-manager is additive: stow still owns the dotfiles today, but the
+    # input is wired up so you can migrate modules (`programs.zsh`, `git`, …)
+    # incrementally. Run with `home-manager switch --flake .#$(whoami)`.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nix-darwin, nixpkgs }:
+  outputs = { self, nix-darwin, nixpkgs, home-manager }:
   let
     system = "aarch64-darwin";
     username = builtins.getEnv "USER";
   in {
+    homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
+      pkgs = nixpkgs.legacyPackages.${system};
+      modules = [
+        ({ pkgs, ... }: {
+          home.username = username;
+          home.homeDirectory = "/Users/${username}";
+          home.stateVersion = "25.11";
+          programs.home-manager.enable = true;
+          # Migrate gradually: enable programs.zsh / programs.git / programs.starship
+          # here and remove the matching files from stow once verified.
+        })
+      ];
+    };
+
     darwinConfigurations.${username} = nix-darwin.lib.darwinSystem {
       inherit system;
       modules = [
@@ -74,11 +96,13 @@
               upgrade = false;
               cleanup = "none";
             };
-            # External taps. bun lives in oven-sh/bun rather than homebrew/core.
+            # External taps. bun lives in oven-sh/bun, AeroSpace in nikitabobko/tap.
             taps = [
               "oven-sh/bun"
+              "nikitabobko/tap"
             ];
             brews = [
+              "1password-cli"
               "aichat"
               "ast-grep"
               "atuin"
@@ -99,6 +123,7 @@
               "glow"
               "go"
               "hyperfine"
+              "jj"
               "jq"
               "k9s"
               "kubecolor"
@@ -131,6 +156,8 @@
               "claude-code"
               "font-hack-nerd-font"
               "ghostty"
+              "karabiner-elements"
+              "nikitabobko/tap/aerospace"
             ];
           };
 
