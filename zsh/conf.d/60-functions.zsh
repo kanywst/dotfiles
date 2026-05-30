@@ -10,7 +10,7 @@ groot() {
         echo "groot: not inside a git repo" >&2
         return 1
     }
-    cd "$root"
+    cd -- "$root"
 }
 
 # Extract any archive
