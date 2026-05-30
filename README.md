@@ -252,7 +252,9 @@ sudo nix run nix-darwin/master#darwin-uninstaller
 | `gp` / `gpf` | push / push --force-with-lease |
 | `gpl` / `gfa` | pull --rebase / fetch --all --prune |
 | `gss` / `gsp` | stash / stash pop |
-| `gwl` | worktree list |
+| `gwl` / `gwa` / `gwr` | worktree list / add / remove |
+| `gcv` / `gcam` | commit -v / commit -a -m |
+| `gcf` / `gri` / `grc` / `gra` | commit --fixup / rebase -i / --continue / --abort |
 | `lg` | lazygit |
 
 ### Git + fzf
@@ -300,12 +302,33 @@ sudo nix run nix-darwin/master#darwin-uninstaller
 | `k9` | k9s TUI |
 | `kex-fzf` / `klog-fzf` | fzf pod picker → exec / logs |
 
+### Runtime / package managers
+
+| Cmd | Action |
+| --- | --- |
+| `m` / `mr` / `mt` / `mu` / `ml` | mise / run / tasks ls / use / ls |
+| `uvr` / `uva` / `uvs` / `uvi` / `uvp` | uv run / add / sync / init / pip |
+| `br` / `bi` / `ba` / `bre` / `bd` / `bt` | bun run / install / add / remove / dev / test |
+
+### AI + hooks + bench
+
+| Cmd | Action |
+| --- | --- |
+| `ai` | aichat (multi-model LLM) |
+| `ask "<task>"` | aichat -e — natural language → shell |
+| `lh` | lefthook |
+| `glk` | gitleaks detect (redacted) |
+| `hf` | hyperfine benchmark |
+| `onef` | onefetch repo summary |
+| `ast` | atuin stats |
+
 ### Functions
 
 | Cmd | Action |
 | --- | --- |
 | `mkcd <dir>` | mkdir + cd |
-| `extract <file>` | auto-detect archive extractor |
+| `groot` | jump to git toplevel |
+| `extract <file>` | auto-detect archive extractor (tar/zip/zst/7z/…) |
 | `port <num>` | who's listening on a port |
 | `killport <num>` | kill the listener |
 | `gi <stack>` | gitignore.io fetcher |
