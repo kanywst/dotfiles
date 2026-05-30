@@ -11,7 +11,9 @@ if command -v carapace &>/dev/null; then
     zstyle ':completion:*' format $'\e[2;37mCompleting %d\e[m'
     # Cache the generated init script so shell startup doesn't spawn carapace.
     _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
-    _carapace_bin="${commands[carapace]:-}"  # empty if zsh/parameter not loaded
+    # `whence -p` is a zsh builtin (no module required) returning the path
+    # of an external command, or empty if there is none.
+    _carapace_bin="$(whence -p carapace 2>/dev/null)"
     # `-e` (existence) — not `-s` (size) — so an empty failure-sentinel
     # doesn't cause a retry every shell startup. The binary mtime check
     # re-triggers regeneration after a real carapace upgrade.
