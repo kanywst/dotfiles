@@ -28,8 +28,10 @@ sync_address = "https://api.atuin.sh"
 ## ---------- daemon ----------
 [daemon]
 enabled = true
-# Atuin parses durations as strings ("5m", "300s") — not as bare integers.
-sync_frequency = "300s"
+# daemon.sync_frequency is INTEGER seconds (not a duration string).
+# Top-level sync_frequency above accepts duration strings; the two fields
+# parse differently in atuin's settings.rs — don't unify them.
+sync_frequency = 300
 # socket_path defaults to ~/.local/share/atuin/atuin.sock already, and Atuin's
 # Rust parser does not expand a literal `~`. Omit and let the default win.
 systemd_socket = false
