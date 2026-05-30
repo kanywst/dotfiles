@@ -21,7 +21,8 @@ diff.format = "git"
 # delta is a pager (display-only) — using it as diff-editor would break
 # `jj split` / `jj squash -i`. Use jj's built-in terminal diff editor.
 diff-editor = ":builtin"
-editor = ":builtin"
+# jj has no `:builtin` text editor — that string only exists for diff-editor.
+# Omit ui.editor; jj falls back to $JJ_EDITOR / $EDITOR / $VISUAL / vi.
 
 [ui.pager-cmd]
 delta = ["delta", "--paging=auto"]
