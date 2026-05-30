@@ -47,7 +47,9 @@ if command -v darwin-rebuild >/dev/null 2>&1; then
         darwin-rebuild switch --flake ".#$who" --impure
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
-    sudo env "USER=$who" \
+    # PATH propagated here too: `nix` lives in the user's nix profile and is
+    # not on root's default PATH after sudo wipes it.
+    sudo env "PATH=$path" "USER=$who" \
         nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#$who" --impure
 fi
 '''
