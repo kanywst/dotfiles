@@ -86,7 +86,10 @@ alias fzfv='${EDITOR} $(fzf)'
 alias fzfg='git checkout $(git branch | fzf)'
 # `command ps` bypasses the `ps→procs` alias in 30-modern-cli.zsh; procs
 # doesn't speak BSD `aux` flags so the alias would break this picker.
-alias fzfk='kill -9 $(command ps aux | fzf | awk "{print \$2}")'
+# Pipe to `xargs kill -9` so cancelling fzf is a clean no-op (with bare
+# `$(...)` substitution, an empty pid runs `kill -9` with no args → error).
+# `--header-lines=1` pins the column header instead of selecting it.
+alias fzfk='command ps aux | fzf --header-lines=1 | awk "{print \$2}" | xargs kill -9'
 alias fzfd='cd $(find * -type d | fzf)'
 alias fzff='find . -type f | fzf'
 alias lf='${EDITOR} $(ls -1 | fzf)'
