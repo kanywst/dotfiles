@@ -13,8 +13,15 @@ if command -v carapace &>/dev/null; then
     _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
     if [[ ! -s "$_carapace_cache" || "$commands[carapace]" -nt "$_carapace_cache" ]]; then
         [[ -d "${_carapace_cache:h}" ]] || mkdir -p "${_carapace_cache:h}"
-        carapace _carapace zsh > "$_carapace_cache"
+        # Atomic write: protects against half-written cache on Ctrl-C.
+        _carapace_tmp="$(mktemp "${_carapace_cache}.XXXXXX")"
+        if carapace _carapace zsh > "$_carapace_tmp"; then
+            mv -f "$_carapace_tmp" "$_carapace_cache"
+        else
+            rm -f "$_carapace_tmp"
+        fi
+        unset _carapace_tmp
     fi
-    source "$_carapace_cache"
+    [[ -s "$_carapace_cache" ]] && source "$_carapace_cache"
     unset _carapace_cache
 fi
