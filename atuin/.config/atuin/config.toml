@@ -1,0 +1,50 @@
+# Atuin config — synced via stow.
+#
+# Daemon: keeps a hot in-memory search index hot across shells, syncs without
+# touching the prompt. Requires `atuin daemon` running (autostart handles it).
+#
+# Workspace filter: when inside a git repo, default search to only commands
+# run from inside that repo's tree. Toggle with `Ctrl-r` then `Tab`.
+
+## ---------- search ----------
+filter_mode = "global"
+filter_mode_shell_up_key_binding = "session"
+workspaces = true
+search_mode = "fuzzy"
+style = "compact"
+inline_height = 25
+show_preview = true
+
+# Atuin owns Ctrl-r only; the up-arrow stays as zsh prefix-search via
+# `atuin init zsh --disable-up-arrow` in 95-atuin.zsh.
+
+## ---------- sync ----------
+# Set `auto_sync = true` and run `atuin login` once you've created an
+# account. The hosted service is opt-in; self-hosting works too.
+auto_sync = false
+sync_frequency = "1h"
+sync_address = "https://api.atuin.sh"
+
+## ---------- daemon ----------
+[daemon]
+enabled = true
+sync_frequency = 300
+socket_path = "~/.local/share/atuin/atuin.sock"
+systemd_socket = false
+
+## ---------- stats ----------
+[stats]
+common_subcommands = [
+    "cargo",
+    "docker",
+    "git",
+    "go",
+    "kubectl",
+    "mise",
+    "nix",
+    "npm",
+    "pnpm",
+    "uv",
+    "yarn",
+]
+common_prefix = ["sudo", "doas", "time"]
