@@ -201,8 +201,9 @@ chmod 600 ~/.zshrc.local
 ### 7. (Optional) nix-darwin
 
 `flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
-する。`username` は `builtins.getEnv "USER"` を試してから固定値にフォール
-バックするので、pure-eval (`nix flake check` etc.) も通る。
+する。`username` は `"user"` でハードコードしてあるので pure-eval
+(`nix flake check` etc.) が通り、`sudo` 配下でも環境変数引き継ぎ不要。別
+ユーザーで使うなら fork してこの 1 行を書き換える。
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \
