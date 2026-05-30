@@ -6,6 +6,7 @@
 #
 #   00-env          XDG dirs, locale, PATH, language envs
 #   05-mise         unified runtime version manager
+#   06-direnv       per-directory .envrc loader
 #   10-options      zsh options & history
 #   20-prompt       Starship
 #   30-modern-cli   eza/bat/delta/btop/xh/yazi/zellij/sg

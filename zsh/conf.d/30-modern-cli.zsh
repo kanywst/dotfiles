@@ -28,11 +28,22 @@ command -v delta &>/dev/null && alias diff='delta'
 # btop — modern top
 command -v btop &>/dev/null && alias top='btop'
 
+# procs — modern ps (Rust)
+command -v procs &>/dev/null && alias ps='procs'
+
+# dust — modern du (Rust)
+command -v dust &>/dev/null && alias du='dust'
+
 # xh — modern curl/httpie (Rust)
 command -v xh &>/dev/null && alias http='xh'
 
 # ast-grep — structural search/replace
 command -v ast-grep &>/dev/null && alias sg='ast-grep'
+
+# hyperfine — benchmarking; no alias (explicit invocation expected)
+# sd — modern sed; no alias (sed semantics differ — invoke `sd` explicitly)
+# tokei — code stats; usually invoked explicitly
+# onefetch — git repo summary; usually invoked explicitly
 
 # yazi — TUI file manager with auto-cd on exit
 if command -v yazi &>/dev/null; then
@@ -50,8 +61,10 @@ fi
 # zellij — modern terminal multiplexer
 command -v zellij &>/dev/null && alias zj='zellij'
 
-# tldr (tlrc impl)
-command -v tldr &>/dev/null || command -v tlrc &>/dev/null && alias help='tldr'
+# tldr (tlrc impl) — operator precedence: parenthesise the OR
+if command -v tldr &>/dev/null || command -v tlrc &>/dev/null; then
+    alias help='tldr'
+fi
 
 # glow — markdown viewer
 command -v glow &>/dev/null && alias md='glow'
