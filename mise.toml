@@ -28,16 +28,22 @@ run = "./install.sh --delete"
 
 [tasks.darwin-switch]
 description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
-# First-time bootstrap uses `nix run nix-darwin/master#darwin-rebuild` because
-# darwin-rebuild isn't on PATH yet; subsequent runs use the local binary. The
-# `sudo env "PATH=$PATH"` is needed because sudo wipes PATH and darwin-rebuild
-# usually lives in a nix profile dir that's only on the user's PATH.
+# Notes:
+# - sudo resets USER/HOME to root. The flake's `username = builtins.getEnv "USER"`
+#   needs the real user, so propagate USER/HOME explicitly.
+# - sudo also wipes PATH; darwin-rebuild lives in a nix profile only on the
+#   caller's PATH, so propagate that too.
+# - First run before nix-darwin is installed has no `darwin-rebuild` binary,
+#   so fall back to `nix run` against the same flake input pin.
 run = '''
+who=$(whoami); home=$HOME; path=$PATH
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "PATH=$PATH" darwin-rebuild switch --flake ".#$(whoami)" --impure
+    sudo env "PATH=$path" "USER=$who" "HOME=$home" \
+        darwin-rebuild switch --flake ".#$who" --impure
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
-    sudo nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#$(whoami)" --impure
+    sudo env "USER=$who" "HOME=$home" \
+        nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#$who" --impure
 fi
 '''
 
