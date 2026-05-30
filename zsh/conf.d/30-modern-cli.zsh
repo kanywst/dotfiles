@@ -61,10 +61,15 @@ fi
 # zellij — modern terminal multiplexer
 command -v zellij &>/dev/null && alias zj='zellij'
 
-# tldr (tlrc impl) — operator precedence: parenthesise the OR
-if command -v tldr &>/dev/null || command -v tlrc &>/dev/null; then
-    alias help='tldr'
-fi
+# tldr/tlrc — alias `help` to whichever binary is on PATH (tlrc package may
+# install either the `tldr` or `tlrc` command depending on version).
+for _tldr_bin in tldr tlrc; do
+    if command -v "$_tldr_bin" &>/dev/null; then
+        alias help="$_tldr_bin"
+        break
+    fi
+done
+unset _tldr_bin
 
 # glow — markdown viewer
 command -v glow &>/dev/null && alias md='glow'
