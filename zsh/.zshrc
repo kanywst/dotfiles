@@ -14,6 +14,7 @@
 #   50-aliases      nav/git/docker/k8s/system
 #   60-functions
 #   70-completions  compinit (rebuilds at most once a day)
+#   75-carapace     multi-shell completion bridge (500+ CLIs)
 #   80-plugins      autosuggestions, fzf-tab, syntax-highlighting (last)
 #   90-keybindings
 #   95-atuin        Ctrl-R history search (loaded last to own the bind)
