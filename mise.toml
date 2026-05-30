@@ -1,0 +1,50 @@
+# mise tasks for this repo. Run with `mise run <name>` or `mise r <name>`.
+# List with `mise tasks ls`.
+
+[tools]
+node = "lts"
+
+[tasks.lint]
+description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
+run = [
+    "zsh -n zsh/.zshrc",
+    "for f in zsh/conf.d/*.zsh; do echo == $f; zsh -n $f; done",
+    "shellcheck -e SC1090,SC1091 install.sh",
+    "npx --yes markdownlint-cli2 '**/*.md'",
+    "actionlint .github/workflows/*.yml",
+]
+
+[tasks.install]
+description = "Stow all packages into $HOME"
+run = "./install.sh"
+
+[tasks.restow]
+description = "Re-link stow packages (recover from drift)"
+run = "./install.sh --restow"
+
+[tasks.uninstall]
+description = "Unlink all stowed packages"
+run = "./install.sh --delete"
+
+[tasks.darwin-switch]
+description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
+run = "sudo darwin-rebuild switch --flake .#$(whoami) --impure"
+
+[tasks.darwin-check]
+description = "Evaluate the flake without building"
+run = "nix flake check --no-build --impure"
+
+[tasks.update]
+description = "Bump flake inputs and brew bundle"
+run = [
+    "nix flake update",
+    "brew update && brew upgrade",
+]
+
+[tasks.hooks]
+description = "Install lefthook git hooks"
+run = "lefthook install"
+
+[tasks.scan]
+description = "Scan repo for secrets with gitleaks"
+run = "gitleaks detect --no-banner --redact"
