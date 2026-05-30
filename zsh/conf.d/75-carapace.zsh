@@ -9,5 +9,12 @@
 if command -v carapace &>/dev/null; then
     export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
     zstyle ':completion:*' format $'\e[2;37mCompleting %d\e[m'
-    source <(carapace _carapace zsh)
+    # Cache the generated init script so shell startup doesn't spawn carapace.
+    _carapace_cache="${XDG_CACHE_HOME:-$HOME/.cache}/carapace/init.zsh"
+    if [[ ! -s "$_carapace_cache" || "$commands[carapace]" -nt "$_carapace_cache" ]]; then
+        [[ -d "${_carapace_cache:h}" ]] || mkdir -p "${_carapace_cache:h}"
+        carapace _carapace zsh > "$_carapace_cache"
+    fi
+    source "$_carapace_cache"
+    unset _carapace_cache
 fi
