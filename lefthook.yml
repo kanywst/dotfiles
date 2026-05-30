@@ -6,10 +6,12 @@ pre-commit:
   commands:
     zsh-syntax:
       glob: "zsh/conf.d/*.zsh"
-      run: zsh -n {staged_files}
+      # `zsh -n a.zsh b.zsh` only checks the first file (others become $1, $2).
+      # Loop so every staged file is actually parsed; fail on first error.
+      run: 'for f in {staged_files}; do zsh -n "$f" || exit 1; done'
     zshrc-syntax:
       glob: "zsh/.zshrc"
-      run: zsh -n {staged_files}
+      run: 'for f in {staged_files}; do zsh -n "$f" || exit 1; done'
     shellcheck:
       glob: "*.sh"
       run: shellcheck -e SC1090,SC1091 {staged_files}
