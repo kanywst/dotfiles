@@ -6,9 +6,11 @@ node = "lts"
 
 [tasks.lint]
 description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
+# `|| exit 1` inside the for-loop is load-bearing: a bare `for` returns the
+# exit status of the *last* iteration, masking earlier failures.
 run = [
     "zsh -n zsh/.zshrc",
-    "for f in zsh/conf.d/*.zsh; do echo == $f; zsh -n $f; done",
+    "for f in zsh/conf.d/*.zsh; do echo == $f; zsh -n \"$f\" || exit 1; done",
     "shellcheck -e SC1090,SC1091 install.sh",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
