@@ -75,11 +75,13 @@
               cleanup = "none";
             };
             brews = [
+              "aichat"
               "ast-grep"
               "atuin"
               "bat"
               "btop"
               "bun"
+              "carapace"
               "direnv"
               "dust"
               "eza"
@@ -89,6 +91,7 @@
               "gh"
               "ghq"
               "git-delta"
+              "gitleaks"
               "glow"
               "go"
               "hyperfine"
@@ -99,6 +102,8 @@
               "kubernetes-cli"
               "lazydocker"
               "lazygit"
+              "lefthook"
+              "mas"
               "mise"
               "onefetch"
               "procs"
