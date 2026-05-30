@@ -13,9 +13,11 @@ extract() {
         *.tar.bz2|*.tbz2) tar xjf "$1" ;;
         *.tar.gz|*.tgz)   tar xzf "$1" ;;
         *.tar.xz)         tar xJf "$1" ;;
+        *.tar.zst|*.tzst) tar --use-compress-program=unzstd -xf "$1" ;;
         *.tar)            tar xf  "$1" ;;
         *.bz2)            bunzip2 "$1" ;;
         *.gz)             gunzip  "$1" ;;
+        *.zst)            unzstd  "$1" ;;
         *.zip)            unzip   "$1" ;;
         *.7z)             7z x    "$1" ;;
         *.rar)            unrar x "$1" ;;
