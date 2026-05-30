@@ -28,7 +28,8 @@ sync_address = "https://api.atuin.sh"
 ## ---------- daemon ----------
 [daemon]
 enabled = true
-sync_frequency = 300
+# Atuin parses durations as strings ("5m", "300s") — not as bare integers.
+sync_frequency = "300s"
 socket_path = "~/.local/share/atuin/atuin.sock"
 systemd_socket = false
 
