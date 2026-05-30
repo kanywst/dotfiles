@@ -47,6 +47,20 @@ alias gwl='git worktree list'
 alias gwa='git worktree add'
 alias gwr='git worktree remove'
 
+# ----- Jujutsu (jj) — git-compatible modern VCS -----
+if command -v jj &>/dev/null; then
+    alias jjs='jj status'
+    alias jjl='jj log'
+    alias jjll='jj log --no-pager'
+    alias jjn='jj new'
+    alias jje='jj edit'
+    alias jjd='jj diff'
+    alias jjp='jj git push'
+    alias jjf='jj git fetch --all-remotes'
+    alias jjsq='jj squash'
+    alias jjab='jj abandon'
+fi
+
 alias gcv='git commit -v'
 alias gcam='git commit -a -m'
 alias gcf='git commit --fixup'
@@ -177,6 +191,14 @@ fi
 if command -v aichat &>/dev/null; then
     alias ai='aichat'
     alias ask='aichat -e'      # shell-command generator (English → shell)
+fi
+
+# ----- 1Password CLI -----
+if command -v op &>/dev/null; then
+    alias opr='op run --'             # opr -- mycmd: inject secrets via op://… refs
+    alias opl='op item list'
+    alias ops='op item get'           # ops <name>
+    alias opsi='eval "$(op signin)"'  # cache session in env
 fi
 
 # ----- Hooks / security / bench -----
