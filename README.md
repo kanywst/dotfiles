@@ -201,15 +201,14 @@ chmod 600 ~/.zshrc.local
 ### 7. (Optional) nix-darwin
 
 `flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
-する。`username` は `builtins.getEnv "USER"` で取得するので `--impure` が
-必要 — `darwinConfigurations.<your-username>` という形で動的に attribute
-が生える。
+する。`username` は `builtins.getEnv "USER"` を試してから固定値にフォール
+バックするので、pure-eval (`nix flake check` etc.) も通る。
 
 ```bash
 sudo nix run nix-darwin/master#darwin-rebuild -- switch \
-  --flake ~/dotfiles#"$(whoami)" --impure
+  --flake ~/dotfiles#"$(whoami)"
 
-darwin-rebuild switch --flake ~/dotfiles#"$(whoami)" --impure
+darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 ```
 
 何が起きるか:

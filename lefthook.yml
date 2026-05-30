@@ -29,4 +29,4 @@ pre-push:
       run: actionlint {push_files}
     flake-check:
       glob: "flake.{nix,lock}"
-      run: nix flake check --no-build --impure
+      run: nix flake check --no-build
