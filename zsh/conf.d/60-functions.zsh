@@ -25,9 +25,11 @@ extract() {
         *.tar.xz)         tar xJf "$1" ;;
         *.tar.zst|*.tzst) zstd -dc "$1" | tar -xf - ;;  # works on BSD tar (macOS) too
         *.tar)            tar xf  "$1" ;;
-        *.bz2)            bunzip2 "$1" ;;
-        *.gz)             gunzip  "$1" ;;
-        *.zst)            unzstd  "$1" ;;
+        # `-k` (keep) so the original archive survives — tar/unzip behave
+        # the same way; bunzip2/gunzip/unzstd default to deleting the input.
+        *.bz2)            bunzip2 -k "$1" ;;
+        *.gz)             gunzip  -k "$1" ;;
+        *.zst)            unzstd  -k "$1" ;;
         *.zip)            unzip   "$1" ;;
         *.7z)             7z x    "$1" ;;
         *.rar)            unrar x "$1" ;;
