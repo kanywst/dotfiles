@@ -4,7 +4,8 @@
 # Reload after edits with `cmd+shift+,` or `ghostty +show-config`.
 
 # ---------- font ----------
-font-family = Hack Nerd Font
+# Quote font names that contain spaces to be safe across parser versions.
+font-family = "Hack Nerd Font"
 font-size = 13
 font-feature = +liga
 font-feature = +calt
