@@ -40,13 +40,11 @@ adopt_conflicts() {
             info "Backing up $target → $target.backup"
             mv "$target" "$target.backup"
         elif [[ -L "$target" ]]; then
-            local current_link
-            current_link="$(readlink "$target")"
-            # Drop any symlink that already points into this repo (stale or
-            # pre-stow absolute symlinks from the old install.sh). stow will
-            # re-create them.
-            if [[ "$current_link" == "$DOTFILES_DIR/"* || "$current_link" != "$src" ]]; then
-                info "Removing existing symlink $target (was $current_link)"
+            # `-ef` follows symlinks and tests "same file" (inode), which works
+            # for stow's relative symlinks AND any old absolute ones. Only
+            # remove if it resolves somewhere other than the repo source.
+            if ! [[ "$target" -ef "$src" ]]; then
+                info "Removing existing symlink $target (was $(readlink "$target"))"
                 rm "$target"
             fi
         fi
