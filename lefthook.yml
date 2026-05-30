@@ -1,0 +1,30 @@
+# lefthook — fast, parallel git hooks. Install once with `lefthook install`
+# (or `mise run hooks`). Hooks here mirror the CI matrix so PRs land green.
+
+pre-commit:
+  parallel: true
+  commands:
+    zsh-syntax:
+      glob: "zsh/conf.d/*.zsh"
+      run: zsh -n {staged_files}
+    zshrc-syntax:
+      glob: "zsh/.zshrc"
+      run: zsh -n {staged_files}
+    shellcheck:
+      glob: "*.sh"
+      run: shellcheck -e SC1090,SC1091 {staged_files}
+    markdownlint:
+      glob: "*.md"
+      run: npx --yes markdownlint-cli2 {staged_files}
+    gitleaks:
+      run: gitleaks protect --staged --no-banner --redact
+
+pre-push:
+  parallel: true
+  commands:
+    actionlint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: actionlint {push_files}
+    flake-check:
+      glob: "flake.{nix,lock}"
+      run: nix flake check --no-build --impure
