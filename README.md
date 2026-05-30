@@ -40,6 +40,10 @@ exec zsh -l
 - Ghostty — terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks — fast parallel pre-commit hooks + secret scanning
 - aichat — multi-model LLM CLI in the shell
+- jj (Jujutsu) — git-compatible modern VCS, colocated with git per-repo
+- AeroSpace — i3-like tiling WM (no SIP disable)
+- Karabiner-Elements — Caps Lock → Hyper Key + hjkl arrow keys
+- 1Password CLI + SSH agent — keys live in vault, none on disk
 
 ## Stack
 
@@ -75,8 +79,13 @@ exec zsh -l
 | Hooks | lefthook | husky / pre-commit (Python) |
 | Secrets scan | gitleaks | manual `grep -i secret` |
 | LLM CLI | aichat | one-off `curl` to API |
+| VCS | jj (Jujutsu) + git | git alone |
+| Tile WM | AeroSpace | yabai (needs SIP off) / Magnet |
+| Keymap | Karabiner-Elements | macOS System Settings |
+| SSH keys | 1Password CLI agent | `~/.ssh/id_*` files |
 | App Store | mas | manual GUI installs |
 | System | nix-darwin | manual `defaults write` |
+| User env | home-manager (input wired) | stow only |
 | Linker | GNU stow | hand-rolled `ln -s` scripts |
 
 ## Architecture
@@ -143,6 +152,10 @@ brew install carapace lefthook gitleaks
 
 # LLM CLI
 brew install aichat
+
+# Modern VCS + tile WM + keymap + 1Password agent
+brew install jj 1password-cli
+brew install --cask aerospace karabiner-elements
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -257,6 +270,32 @@ sudo nix run nix-darwin/master#darwin-uninstaller
 | `gcf` / `gri` / `grc` / `gra` | commit --fixup / rebase -i / --continue / --abort |
 | `lg` | lazygit |
 
+### Jujutsu (jj) — git-compatible
+
+| Cmd | Action |
+| --- | --- |
+| `jjs` / `jjl` / `jjll` | status / log / log no-pager |
+| `jjn` / `jje` / `jjd` | new / edit / diff |
+| `jjp` / `jjf` | git push / git fetch --all-remotes |
+| `jjsq` / `jjab` | squash / abandon |
+
+Initialise jj inside an existing git repo (colocated):
+
+```bash
+cd <repo> && jj git init --colocate
+```
+
+### 1Password CLI
+
+| Cmd | Action |
+| --- | --- |
+| `opr -- <cmd>` | run cmd with `op://…` refs injected as env |
+| `opl` / `ops <name>` | item list / item get |
+| `opsi` | sign in + cache session in env |
+
+The SSH agent socket is auto-detected in `45-1password.zsh` — enable
+"Use the SSH agent" in the 1Password desktop app's Settings → Developer.
+
 ### Git + fzf
 
 | Cmd | Action |
@@ -358,6 +397,23 @@ sudo nix run nix-darwin/master#darwin-uninstaller
 | `↑` / `↓` | prefix-search history |
 | `Ctrl-←` / `Ctrl-→` | word-jump |
 | `Ctrl-X Ctrl-E` | edit current command line in `$EDITOR` |
+| `Caps Lock` (tap) | Escape (Karabiner) |
+| `Caps Lock` (hold) | Hyper Key — cmd+ctrl+opt+shift |
+| `Hyper + h/j/k/l` | arrow keys |
+
+### AeroSpace (tiling WM)
+
+| Key | Action |
+| --- | --- |
+| `Alt + h/j/k/l` | focus left/down/up/right |
+| `Alt-Shift + h/j/k/l` | move window |
+| `Alt + 1..9` | switch workspace |
+| `Alt-Shift + 1..9` | move window to workspace |
+| `Alt + /` / `,` | tiles / accordion layout |
+| `Alt + f` | fullscreen |
+| `Alt-Shift + space` | toggle floating / tiling |
+| `Alt-Shift + q` | close window |
+| `Alt-Shift + c` | reload AeroSpace config |
 
 ## Design notes
 
