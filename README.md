@@ -43,7 +43,6 @@ exec zsh -l
 - jj (Jujutsu) — git-compatible modern VCS, colocated with git per-repo
 - AeroSpace — i3-like tiling WM (no SIP disable)
 - Karabiner-Elements — Caps Lock → Hyper Key + hjkl arrow keys
-- 1Password CLI + SSH agent — keys live in vault, none on disk
 
 ## Stack
 
@@ -82,7 +81,6 @@ exec zsh -l
 | VCS | jj (Jujutsu) + git | git alone |
 | Tile WM | AeroSpace | yabai (needs SIP off) / Magnet |
 | Keymap | Karabiner-Elements | macOS System Settings |
-| SSH keys | 1Password CLI agent | `~/.ssh/id_*` files |
 | App Store | mas | manual GUI installs |
 | System | nix-darwin | manual `defaults write` |
 | User env | home-manager (input wired) | stow only |
@@ -153,9 +151,9 @@ brew install carapace lefthook gitleaks
 # LLM CLI
 brew install aichat
 
-# Modern VCS + tile WM + keymap + 1Password agent
-brew install jj 1password-cli
-brew install --cask aerospace karabiner-elements
+# Modern VCS + tile WM + keymap
+brew install jj
+brew install --cask nikitabobko/tap/aerospace karabiner-elements
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -284,17 +282,6 @@ Initialise jj inside an existing git repo (colocated):
 ```bash
 cd <repo> && jj git init --colocate
 ```
-
-### 1Password CLI
-
-| Cmd | Action |
-| --- | --- |
-| `opr -- <cmd>` | run cmd with `op://…` refs injected as env |
-| `opl` / `ops <name>` | item list / item get |
-| `opsi` | sign in + cache session in env |
-
-The SSH agent socket is auto-detected in `45-1password.zsh` — enable
-"Use the SSH agent" in the 1Password desktop app's Settings → Developer.
 
 ### Git + fzf
 
