@@ -1,0 +1,328 @@
+# kanywst / dotfiles
+
+![kanywst / dotfiles — synthwave macOS, 2026](assets/logo.png)
+
+![tagline](https://readme-typing-svg.demolab.com/?font=Fira+Code&pause=700&color=00FFFF&width=620&height=44&lines=modern+macOS+dev+env;rust-flavoured+CLI+everywhere;atuin+%2B+fzf+%2B+starship;declarative+via+nix-darwin)
+
+[![lint](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml)
+![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
+## TL;DR
+
+```bash
+git clone https://github.com/kanywst/dotfiles.git ~/dotfiles
+cd ~/dotfiles && ./install.sh
+exec zsh -l
+```
+
+`install.sh` is a thin GNU-stow wrapper. It links `zsh/`, `git/`,
+`starship/` into `$HOME` and renames any colliding file to `*.backup` first.
+
+## Why
+
+- **No plugin-manager runtime** — zsh loads `conf.d/NN-*.zsh` by filename order. Nothing to break, nothing to update.
+- **One runtime manager** — `mise` pins node / python / go / rust globally. NVM / pyenv / nodebrew retired.
+- **One brew source of truth** — `flake.nix` declares the bundle. `darwin-rebuild switch` reconciles.
+- **Secrets never enter tracked files** — `~/.zshrc.local` is sourced last by `.zshrc` and gitignored.
+
+## What's inside
+
+- Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep
+- Atuin Ctrl-R — sqlite-backed full-text history
+- mise — node / python / go / rust pinned globally
+- nix-darwin — flake-driven macOS defaults + brew bundle
+- GNU stow — modular `conf.d` zsh, no plugin manager
+- Starship — k8s / docker / git status in the prompt
+- fzf + fzf-tab — preview-driven completion everywhere
+- lazygit / lazydocker / k9s — TUIs for the obvious things
+- ghq + fzf — `repo` jumps to anything on disk
+
+## Stack
+
+| Layer | Tool | Replaces |
+| --- | --- | --- |
+| Shell | zsh | — |
+| Prompt | starship | oh-my-zsh themes |
+| History | atuin | bare `history` + Ctrl-R |
+| Listing | eza | ls |
+| Pager-cat | bat | cat |
+| Find | fd | find |
+| Grep | ripgrep | grep |
+| Diff | delta | git's diff |
+| Top | btop | top / htop |
+| HTTP | xh | curl / httpie |
+| Cd | zoxide | cd + autojump |
+| Fuzzy | fzf + fzf-tab | manual completion |
+| Files TUI | yazi | ranger |
+| Multiplex | zellij | tmux |
+| Runtime | mise | nvm / pyenv / nodebrew |
+| System | nix-darwin | manual `defaults write` |
+| Linker | GNU stow | hand-rolled `ln -s` scripts |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[~/dotfiles] -->|install.sh| B[stow]
+    B --> Z[~/.zshrc]
+    B --> G[~/.gitignore_global]
+    B --> S[~/.config/starship.toml]
+    Z -->|sources| C[conf.d/*.zsh]
+    C --> M[mise]
+    C --> F[fzf + atuin]
+    C --> P[starship]
+    A -.->|optional| N[flake.nix]
+    N -->|darwin-rebuild| H[Homebrew bundle]
+    N -->|darwin-rebuild| D[macOS defaults]
+```
+
+`zsh/conf.d/` is intentionally excluded from stow
+(`zsh/.stow-local-ignore`) and sourced directly from
+`$DOTFILES_ZSH_DIR/conf.d/`, so the loader is indifferent to symlink shape.
+
+## Install
+
+### 1. Clone
+
+```bash
+git clone https://github.com/kanywst/dotfiles.git ~/dotfiles
+cd ~/dotfiles
+```
+
+### 2. Stow
+
+```bash
+./install.sh             # link
+./install.sh --restow    # re-link if symlinks drift
+./install.sh --delete    # uninstall
+```
+
+stow が未インストールなら `brew install stow` を自動で打つ。conflict した
+ファイルは `*.backup` にリネームしてから link する。
+
+### 3. Tooling
+
+```bash
+# Core
+brew install git gh ghq fzf jq yq stow
+
+# Rust-flavoured CLI
+brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
+             ast-grep yazi zellij
+
+# Runtime manager (unifies nvm / pyenv / rustup)
+brew install mise
+
+# Zsh plugins
+brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
+
+# Git / k8s / docker TUI
+brew install lazygit lazydocker kubectl kubectx kubecolor k9s krew
+gh extension install dlvhdr/gh-dash
+
+# Nerd font (Starship requires it)
+brew install --cask font-hack-nerd-font
+```
+
+### 4. Pin runtimes
+
+```bash
+mise use -g node@lts python@3.13 go@latest rust
+```
+
+### 5. Local secrets
+
+```bash
+cat > ~/.zshrc.local <<'EOF'
+export GEMINI_API_KEY="..."
+export OPENAI_API_KEY="..."
+EOF
+chmod 600 ~/.zshrc.local
+```
+
+### 6. (Optional) nix-darwin
+
+`flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
+する。`username` は `builtins.getEnv "USER"` で取得するので `--impure` が
+必要 — `darwinConfigurations.<your-username>` という形で動的に attribute
+が生える。
+
+```bash
+sudo nix run nix-darwin/master#darwin-rebuild -- switch \
+  --flake ~/dotfiles#"$(whoami)" --impure
+
+darwin-rebuild switch --flake ~/dotfiles#"$(whoami)" --impure
+```
+
+何が起きるか:
+
+- `system.defaults` の項目 → `defaults write` 相当が走る (Dock 自動隠し、Dark Mode、Finder の隠しファイル表示 など)
+- `homebrew.brews / casks` のリストに対して `brew install` (`cleanup = "none"` なのでリスト外は消さない)
+- `~/.zshrc` / `~/.config/starship.toml` は触らない (stow の管轄)
+
+やめる時:
+
+```bash
+sudo nix run nix-darwin/master#darwin-uninstaller
+```
+
+## Daily-driver reference
+
+### Navigation
+
+| Cmd | Action |
+| --- | --- |
+| `cd foo` | zoxide frecency jump |
+| `..` / `...` / `....` | `cd ../..` etc. |
+| `mkcd dir` | `mkdir -p && cd` |
+| `Alt-C` | fzf dir picker |
+| `Ctrl-T` | fzf file picker (insert) |
+
+### Listing & viewing
+
+| Cmd | Action |
+| --- | --- |
+| `ls` / `ll` / `la` / `lt` / `ltt` | eza variants |
+| `cat` | bat |
+| `top` | btop |
+| `diff` | delta |
+| `tree` | eza --tree |
+
+### Git
+
+| Cmd | Action |
+| --- | --- |
+| `gs` / `gst` | status (short / full) |
+| `ga` / `gap` | add / patch-add |
+| `gc` / `gcm` / `gcs` | commit / -m / -s |
+| `gca` / `gcan` | amend / amend --no-edit |
+| `gd` / `gdc` | diff / diff --cached |
+| `gl` / `gla` / `glo` | log graph / + all / last 20 |
+| `gco` / `gcb` | checkout / -b |
+| `gsw` / `gswc` | switch / switch -c |
+| `gb` / `gbd` | branch / branch -d |
+| `gp` / `gpf` | push / push --force-with-lease |
+| `gpl` / `gfa` | pull --rebase / fetch --all --prune |
+| `gss` / `gsp` | stash / stash pop |
+| `gwl` | worktree list |
+| `lg` | lazygit |
+
+### Git + fzf
+
+| Cmd | Action |
+| --- | --- |
+| `gcof` | fzf branch checkout (log preview) |
+| `gwt` | fzf worktree jump |
+| `repo` / `g` | ghq + fzf repo jump |
+
+### GitHub CLI
+
+| Cmd | Action |
+| --- | --- |
+| `ghco` | fzf PR checkout |
+| `ghpr` | `gh pr create --web` |
+| `ghprl` / `ghprv` | PR list / view web |
+| `ghd` | `gh dash` |
+
+### Docker
+
+| Cmd | Action |
+| --- | --- |
+| `d` | docker |
+| `dc` / `dcu` / `dcd` | compose / up -d / down |
+| `dcl` / `dcb` / `dcr` | logs -f / build / restart |
+| `dps` / `dpsa` / `dimg` | formatted ps / ps -a / images |
+| `dprune` | system prune -af --volumes |
+| `ld` | lazydocker |
+
+### Kubernetes
+
+| Cmd | Action |
+| --- | --- |
+| `k` | kubecolor (color kubectl) |
+| `ktx` / `kns` / `kkn` | kubectx / kubens / set ns |
+| `kgp` / `kgpa` | get pods / -A |
+| `kgs` / `kgd` / `kgi` / `kgn` / `kga` | get svc / deploy / ing / nodes / all |
+| `kge` | events sorted by time |
+| `kdp` / `kds` / `kdd` | describe pod / svc / deploy |
+| `kl` / `klf` / `klp` | logs / -f / --previous |
+| `kex` / `kpf` | exec -it / port-forward |
+| `kaf` / `kdf` | apply -f / delete -f |
+| `kw` | watch pods |
+| `k9` | k9s TUI |
+| `kex-fzf` / `klog-fzf` | fzf pod picker → exec / logs |
+
+### Functions
+
+| Cmd | Action |
+| --- | --- |
+| `mkcd <dir>` | mkdir + cd |
+| `extract <file>` | auto-detect archive extractor |
+| `port <num>` | who's listening on a port |
+| `killport <num>` | kill the listener |
+| `gi <stack>` | gitignore.io fetcher |
+| `fkill` | fzf process killer |
+| `avg [path]` | open in Antigravity |
+
+### System
+
+| Cmd | Action |
+| --- | --- |
+| `ports` | listening ports |
+| `myip` / `localip` | global / en0 IP |
+| `path` | `$PATH` one-per-line |
+| `pbjson` | format clipboard JSON |
+| `flushdns` | macOS DNS cache flush |
+| `showfiles` / `hidefiles` | Finder hidden toggle |
+| `reload` / `sz` / `ez` | reload shell / source / edit zshrc |
+
+### Key bindings
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-R` | Atuin full-text history |
+| `Ctrl-T` | fzf file insert |
+| `Alt-C` | fzf cd |
+| `Ctrl-/` | fzf preview toggle |
+| `↑` / `↓` | prefix-search history |
+| `Ctrl-←` / `Ctrl-→` | word-jump |
+| `Ctrl-X Ctrl-E` | edit current command line in `$EDITOR` |
+
+## Design notes
+
+- `.zshrc` is a 30-line loader; real config lives in `zsh/conf.d/NN-*.zsh`. Prefix decides load order (`00-env` → `99-local`).
+- `typeset -U path PATH` dedupes `PATH` automatically.
+- NVM / nodebrew / pyenv are retired; only `mise activate zsh` runs.
+- `$BREW_PREFIX` is cached once per shell to skip 50–100 ms of `brew --prefix`.
+- `compinit` rebuilds its dump at most once per 24 h.
+- Atuin owns Ctrl-R only (`--disable-up-arrow`); ↑ stays as zsh prefix-search.
+- `conf.d/` is excluded from stow and sourced from `$DOTFILES_ZSH_DIR/conf.d/`.
+- Secrets live in `~/.zshrc.local`, gitignored, never tracked.
+
+## Troubleshooting
+
+Slow shell:
+
+```bash
+time zsh -i -c exit
+zsh -xvs 2>&1 | ts -i "%.s" | sort -nr | head -20
+```
+
+Plugins not picked up:
+
+```bash
+echo "$BREW_PREFIX"
+ls "$BREW_PREFIX/share/zsh-autosuggestions/"
+ls "$BREW_PREFIX/share/zsh-syntax-highlighting/"
+```
+
+Stale completions:
+
+```bash
+rm -f "$XDG_CACHE_HOME/zsh/zcompdump-"*
+exec zsh -l
+```
+
+## License
+
+MIT.
