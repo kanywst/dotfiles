@@ -18,7 +18,9 @@ email = "niwatakuma@icloud.com"
 default-command = "log"
 pager = "delta"
 diff.format = "git"
-diff-editor = "delta"
+# delta is a pager (display-only) — using it as diff-editor would break
+# `jj split` / `jj squash -i`. Use jj's built-in terminal diff editor.
+diff-editor = ":builtin"
 editor = ":builtin"
 
 [ui.pager-cmd]
