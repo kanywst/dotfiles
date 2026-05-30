@@ -57,10 +57,11 @@ gi() {
     curl -sL "https://www.toptal.com/developers/gitignore/api/$*"
 }
 
-# fzf-powered process killer
+# fzf-powered process killer. `command ps` bypasses the ps→procs alias from
+# 30-modern-cli.zsh; procs lacks the BSD `-ef` flags this picker needs.
 fkill() {
     local pid
-    pid="$(ps -ef | sed 1d | fzf -m --header='[kill:process]' | awk '{print $2}')"
+    pid="$(command ps -ef | sed 1d | fzf -m --header='[kill:process]' | awk '{print $2}')"
     [[ -n "$pid" ]] && echo "$pid" | xargs kill -"${1:-9}"
 }
 
