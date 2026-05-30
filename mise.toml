@@ -41,8 +41,10 @@ if command -v darwin-rebuild >/dev/null 2>&1; then
     sudo env "PATH=$path" darwin-rebuild switch --flake ".#takumaniwa"
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
+    # Explicit GitHub URL avoids depending on the `nix-darwin` registry alias,
+    # which isn't guaranteed on a fresh machine without a flake registry fetch.
     sudo env "PATH=$path" \
-        nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#takumaniwa"
+        nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#takumaniwa"
 fi
 '''
 

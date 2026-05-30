@@ -205,7 +205,7 @@ chmod 600 ~/.zshrc.local
 バックするので、pure-eval (`nix flake check` etc.) も通る。
 
 ```bash
-sudo nix run nix-darwin/master#darwin-rebuild -- switch \
+sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \
   --flake ~/dotfiles#"$(whoami)"
 
 darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
@@ -220,7 +220,7 @@ darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 やめる時:
 
 ```bash
-sudo nix run nix-darwin/master#darwin-uninstaller
+sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 ```
 
 ## Daily-driver reference
