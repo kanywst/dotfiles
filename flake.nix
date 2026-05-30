@@ -125,6 +125,7 @@
               "zoxide"
               "zsh-autosuggestions"
               "zsh-syntax-highlighting"
+              "zstd"
             ];
             casks = [
               "claude-code"
