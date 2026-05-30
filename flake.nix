@@ -41,8 +41,10 @@
       inherit system;
       modules = [
         ({ pkgs, ... }: {
-          # Nix daemon + flakes
-          nix.settings.experimental-features = [ "nix-command" "flakes" ];
+          # Determinate Nix manages the Nix daemon + flake settings itself, so
+          # opt nix-darwin out of touching them. Flakes / nix-command are
+          # already enabled by Determinate's installer.
+          nix.enable = false;
           nixpkgs.config.allowUnfree = true;
 
           # The user nix-darwin manages on this Mac
