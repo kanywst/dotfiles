@@ -140,7 +140,8 @@ brew install git gh ghq fzf jq yq stow direnv mas
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
-             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch
+             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch \
+             zstd
 
 # Runtime + package managers
 brew install mise uv bun
