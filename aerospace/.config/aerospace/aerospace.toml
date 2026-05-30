@@ -11,6 +11,13 @@ after-login-command = []
 default-root-container-layout = 'tiles'
 default-root-container-orientation = 'auto'
 
+# Mouse follows focus (these are top-level, NOT inside [gaps])
+on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
+on-focus-changed = ['move-mouse window-lazy-center']
+
+# Keep menubar visible (top-level)
+automatically-unhide-macos-hidden-apps = false
+
 # Auto-balance gaps. Match Ghostty padding so windows look consistent.
 [gaps]
 inner.horizontal = 8
@@ -19,13 +26,6 @@ outer.left = 8
 outer.bottom = 8
 outer.top = 8
 outer.right = 8
-
-# Mouse follows focus
-on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
-on-focus-changed = ['move-mouse window-lazy-center']
-
-# Keep menubar visible
-automatically-unhide-macos-hidden-apps = false
 
 [key-mapping]
 preset = 'qwerty'
