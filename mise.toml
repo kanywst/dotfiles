@@ -30,33 +30,25 @@ run = "./install.sh --delete"
 
 [tasks.darwin-switch]
 description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
-# Notes:
-# - sudo resets USER to root. The flake's `username = builtins.getEnv "USER"`
-#   needs the real user, so propagate USER explicitly.
-# - sudo also wipes PATH; darwin-rebuild lives in a nix profile only on the
-#   caller's PATH, so propagate that too.
-# - HOME is intentionally NOT propagated: under sudo, nix would otherwise
-#   write root-owned files into the user's ~/.cache/nix and ~/.config/nix,
-#   breaking subsequent non-sudo `nix` invocations. Let sudo keep HOME=/var/root.
+# - PATH propagated through sudo because nix lives in the user's nix profile.
+# - USER/HOME NOT propagated: the flake's username is hardcoded, and HOME=$HOME
+#   under sudo would have nix write root-owned files into ~/.cache/nix.
 # - First run before nix-darwin is installed has no `darwin-rebuild` binary,
-#   so fall back to `nix run` against the same flake input pin.
+#   so fall back to `nix run`.
 run = '''
-who=$(whoami); path=$PATH
+path=$PATH
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "PATH=$path" "USER=$who" \
-        darwin-rebuild switch --flake ".#$who" --impure
+    sudo env "PATH=$path" darwin-rebuild switch --flake ".#user"
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
-    # PATH propagated here too: `nix` lives in the user's nix profile and is
-    # not on root's default PATH after sudo wipes it.
-    sudo env "PATH=$path" "USER=$who" \
-        nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#$who" --impure
+    sudo env "PATH=$path" \
+        nix run nix-darwin/master#darwin-rebuild -- switch --flake ".#user"
 fi
 '''
 
 [tasks.darwin-check]
 description = "Evaluate the flake without building"
-run = "nix flake check --no-build --impure"
+run = "nix flake check --no-build"
 
 [tasks.update]
 description = "Bump flake inputs and brew bundle"

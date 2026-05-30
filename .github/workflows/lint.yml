@@ -57,4 +57,4 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: flake check (no build — darwin attrs need macOS)
-        run: nix flake check --no-build --impure
+        run: nix flake check --no-build
