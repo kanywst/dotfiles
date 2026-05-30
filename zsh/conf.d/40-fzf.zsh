@@ -21,15 +21,20 @@ export FZF_ALT_C_OPTS='--preview "eza --tree --color=always --level=2 {}"'
 # Ctrl-T file, Alt-C cd; Ctrl-R is later handed to Atuin.
 if command -v fzf &>/dev/null; then
     _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fzf/init.zsh"
-    if [[ ! -s "$_fzf_cache" || "$commands[fzf]" -nt "$_fzf_cache" ]]; then
+    # Regenerate when the cache doesn't exist OR the fzf binary is newer than
+    # the cache; `-e` (existence) — not `-s` (size) — so a previously-failed
+    # generation (empty sentinel below) doesn't make us retry every shell.
+    if [[ ! -e "$_fzf_cache" || "$commands[fzf]" -nt "$_fzf_cache" ]]; then
         [[ -d "${_fzf_cache:h}" ]] || mkdir -p "${_fzf_cache:h}"
-        # Atomic write: a Ctrl-C mid-generation leaves the old cache (or no
-        # cache) intact instead of a half-written file that fails to source.
+        # Atomic write: a Ctrl-C mid-generation leaves the old cache intact.
         _fzf_tmp="$(mktemp "${_fzf_cache}.XXXXXX")"
         if fzf --zsh > "$_fzf_tmp" 2>/dev/null; then
             mv -f "$_fzf_tmp" "$_fzf_cache"
         else
             rm -f "$_fzf_tmp"
+            # Empty sentinel: marks "we tried, --zsh isn't supported here".
+            # The binary mtime check above still re-triggers on a real upgrade.
+            : > "$_fzf_cache"
         fi
         unset _fzf_tmp
     fi
