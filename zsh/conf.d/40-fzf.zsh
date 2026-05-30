@@ -15,9 +15,12 @@ export FZF_CTRL_T_OPTS="$FZF_DEFAULT_OPTS"
 export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 export FZF_ALT_C_OPTS='--preview "eza --tree --color=always --level=2 {}"'
 
-# Homebrew fzf shell bindings (Ctrl-T file, Alt-C cd; Ctrl-R is later handed
-# to Atuin)
-if [[ -f "$BREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
+# fzf shell integration. Modern fzf (>= 0.48) ships everything via `fzf --zsh`;
+# fall back to brew's shell scripts on older installs. Ctrl-T file, Alt-C cd;
+# Ctrl-R is later handed to Atuin.
+if command -v fzf &>/dev/null && fzf --zsh &>/dev/null; then
+    source <(fzf --zsh)
+elif [[ -f "$BREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
     source "$BREW_PREFIX/opt/fzf/shell/completion.zsh"
     source "$BREW_PREFIX/opt/fzf/shell/key-bindings.zsh"
 fi
