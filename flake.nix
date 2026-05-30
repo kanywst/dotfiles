@@ -107,6 +107,7 @@
               "nikitabobko/tap"
             ];
             brews = [
+              "actionlint"
               "aichat"
               "ast-grep"
               "atuin"
@@ -142,6 +143,7 @@
               "procs"
               "ripgrep"
               "sd"
+              "shellcheck"
               "starship"
               "stow"
               "tlrc"

@@ -146,8 +146,8 @@ brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
 # Runtime + package managers
 brew install mise uv bun
 
-# Completion + hooks + security
-brew install carapace lefthook gitleaks
+# Completion + hooks + security + lint
+brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
 brew install aichat
