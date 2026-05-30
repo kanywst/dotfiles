@@ -74,6 +74,10 @@
               upgrade = false;
               cleanup = "none";
             };
+            # External taps. bun lives in oven-sh/bun rather than homebrew/core.
+            taps = [
+              "oven-sh/bun"
+            ];
             brews = [
               "aichat"
               "ast-grep"
