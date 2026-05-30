@@ -19,6 +19,12 @@ if [[ -z "$BREW_PREFIX" ]] && command -v brew &>/dev/null; then
     export BREW_PREFIX="$(brew --prefix)"
 fi
 
+# Homebrew: skip analytics ping and the auto-update on every `brew install`.
+# nix-darwin owns reconciliation; manual `brew install` is just for trial runs.
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ENV_HINTS=1
+
 # Auto-dedupe PATH
 typeset -U path PATH
 
@@ -37,8 +43,8 @@ path=(
     $path
 )
 
-# Go
-export GOROOT="$BREW_PREFIX/opt/golang/libexec"
+# Go — mise activate handles GOROOT/GOPATH; modern Go (>= 1.10) auto-detects
+# GOROOT from the binary path, so don't pin it to brew's keg here.
 
 # Ollama — keep model resident
 export OLLAMA_KEEP_ALIVE="-1"
