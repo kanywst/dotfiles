@@ -193,14 +193,6 @@ if command -v aichat &>/dev/null; then
     alias ask='aichat -e'      # shell-command generator (English → shell)
 fi
 
-# ----- 1Password CLI -----
-if command -v op &>/dev/null; then
-    alias opr='op run --'             # opr -- mycmd: inject secrets via op://… refs
-    alias opl='op item list'
-    alias ops='op item get'           # ops <name>
-    alias opsi='eval "$(op signin)"'  # cache session in env
-fi
-
 # ----- Hooks / security / bench -----
 command -v lefthook  &>/dev/null && alias lh='lefthook'
 command -v gitleaks  &>/dev/null && alias glk='gitleaks detect --no-banner --redact'

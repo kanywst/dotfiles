@@ -102,7 +102,6 @@
               "nikitabobko/tap"
             ];
             brews = [
-              "1password-cli"
               "aichat"
               "ast-grep"
               "atuin"
