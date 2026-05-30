@@ -27,12 +27,13 @@ exec zsh -l
 
 ## What's inside
 
-- Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep
+- Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
 - Atuin Ctrl-R — sqlite-backed full-text history
-- mise — node / python / go / rust pinned globally
+- mise + direnv — runtime pinning + per-directory env
+- uv / bun — fast Python + JS package management
 - nix-darwin — flake-driven macOS defaults + brew bundle
 - GNU stow — modular `conf.d` zsh, no plugin manager
-- Starship — k8s / docker / git status in the prompt
+- Starship — k8s / docker / direnv / git status in the prompt
 - fzf + fzf-tab — preview-driven completion everywhere
 - lazygit / lazydocker / k9s — TUIs for the obvious things
 - ghq + fzf — `repo` jumps to anything on disk
@@ -48,14 +49,23 @@ exec zsh -l
 | Pager-cat | bat | cat |
 | Find | fd | find |
 | Grep | ripgrep | grep |
+| Sed | sd | sed (for safe rewrites) |
+| Process | procs | ps |
+| Disk usage | dust | du |
 | Diff | delta | git's diff |
 | Top | btop | top / htop |
+| Bench | hyperfine | `time` loops |
+| Code stats | tokei | cloc |
+| Repo info | onefetch | manual `git log` summaries |
 | HTTP | xh | curl / httpie |
 | Cd | zoxide | cd + autojump |
 | Fuzzy | fzf + fzf-tab | manual completion |
 | Files TUI | yazi | ranger |
 | Multiplex | zellij | tmux |
 | Runtime | mise | nvm / pyenv / nodebrew |
+| Per-dir env | direnv | hand-rolled `.env` sourcing |
+| Python pkgs | uv | pip / poetry / virtualenv |
+| JS runtime | bun | node + npm + tsx |
 | System | nix-darwin | manual `defaults write` |
 | Linker | GNU stow | hand-rolled `ln -s` scripts |
 
@@ -104,14 +114,14 @@ stow が未インストールなら `brew install stow` を自動で打つ。con
 
 ```bash
 # Core
-brew install git gh ghq fzf jq yq stow
+brew install git gh ghq fzf jq yq stow direnv
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
-             ast-grep yazi zellij
+             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch
 
-# Runtime manager (unifies nvm / pyenv / rustup)
-brew install mise
+# Runtime + package managers
+brew install mise uv bun
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -185,6 +195,8 @@ sudo nix run nix-darwin/master#darwin-uninstaller
 | `ls` / `ll` / `la` / `lt` / `ltt` | eza variants |
 | `cat` | bat |
 | `top` | btop |
+| `ps` | procs |
+| `du` | dust |
 | `diff` | delta |
 | `tree` | eza --tree |
 
