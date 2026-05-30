@@ -21,10 +21,11 @@ export FZF_ALT_C_OPTS='--preview "eza --tree --color=always --level=2 {}"'
 # Ctrl-T file, Alt-C cd; Ctrl-R is later handed to Atuin.
 if command -v fzf &>/dev/null; then
     _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fzf/init.zsh"
+    _fzf_bin="${commands[fzf]:-}"  # empty if zsh/parameter not loaded
     # Regenerate when the cache doesn't exist OR the fzf binary is newer than
     # the cache; `-e` (existence) — not `-s` (size) — so a previously-failed
     # generation (empty sentinel below) doesn't make us retry every shell.
-    if [[ ! -e "$_fzf_cache" || "$commands[fzf]" -nt "$_fzf_cache" ]]; then
+    if [[ ! -e "$_fzf_cache" || ( -n "$_fzf_bin" && "$_fzf_bin" -nt "$_fzf_cache" ) ]]; then
         [[ -d "${_fzf_cache:h}" ]] || mkdir -p "${_fzf_cache:h}"
         # Atomic write: a Ctrl-C mid-generation leaves the old cache intact.
         _fzf_tmp="$(mktemp "${_fzf_cache}.XXXXXX")"
@@ -44,5 +45,5 @@ if command -v fzf &>/dev/null; then
         source "$BREW_PREFIX/opt/fzf/shell/completion.zsh"
         source "$BREW_PREFIX/opt/fzf/shell/key-bindings.zsh"
     fi
-    unset _fzf_cache
+    unset _fzf_cache _fzf_bin
 fi
