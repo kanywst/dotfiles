@@ -31,20 +31,22 @@ run = "./install.sh --delete"
 [tasks.darwin-switch]
 description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
 # - PATH propagated through sudo because nix lives in the user's nix profile.
-# - USER/HOME NOT propagated: the flake's username is hardcoded, and HOME=$HOME
-#   under sudo would have nix write root-owned files into ~/.cache/nix.
+# - USER/HOME NOT propagated: HOME=$HOME under sudo would have nix write
+#   root-owned files into ~/.cache/nix.
+# - `$(whoami)` is captured BEFORE sudo so it resolves to the calling user;
+#   the flake's `username` is the one place that needs editing on a fork.
 # - First run before nix-darwin is installed has no `darwin-rebuild` binary,
 #   so fall back to `nix run`.
 run = '''
-path=$PATH
+path=$PATH; who=$(whoami)
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "PATH=$path" darwin-rebuild switch --flake ".#takumaniwa"
+    sudo env "PATH=$path" darwin-rebuild switch --flake ".#$who"
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
     # Explicit GitHub URL avoids depending on the `nix-darwin` registry alias,
     # which isn't guaranteed on a fresh machine without a flake registry fetch.
     sudo env "PATH=$path" \
-        nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#takumaniwa"
+        nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#$who"
 fi
 '''
 
