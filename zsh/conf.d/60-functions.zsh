@@ -23,7 +23,7 @@ extract() {
         *.tar.bz2|*.tbz2) tar xjf "$1" ;;
         *.tar.gz|*.tgz)   tar xzf "$1" ;;
         *.tar.xz)         tar xJf "$1" ;;
-        *.tar.zst|*.tzst) tar --use-compress-program=unzstd -xf "$1" ;;
+        *.tar.zst|*.tzst) zstd -dc "$1" | tar -xf - ;;  # works on BSD tar (macOS) too
         *.tar)            tar xf  "$1" ;;
         *.bz2)            bunzip2 "$1" ;;
         *.gz)             gunzip  "$1" ;;
