@@ -84,7 +84,9 @@ alias g='repo'
 # Legacy fzf-git pickers (preserved)
 alias fzfv='${EDITOR} $(fzf)'
 alias fzfg='git checkout $(git branch | fzf)'
-alias fzfk='kill -9 $(ps aux | fzf | awk "{print \$2}")'
+# `command ps` bypasses the `ps→procs` alias in 30-modern-cli.zsh; procs
+# doesn't speak BSD `aux` flags so the alias would break this picker.
+alias fzfk='kill -9 $(command ps aux | fzf | awk "{print \$2}")'
 alias fzfd='cd $(find * -type d | fzf)'
 alias fzff='find . -type f | fzf'
 alias lf='${EDITOR} $(ls -1 | fzf)'
