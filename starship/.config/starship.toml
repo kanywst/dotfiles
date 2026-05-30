@@ -1,0 +1,88 @@
+# ~/.config/starship.toml
+
+# ------------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# ------------------------------------------------------------------------------
+
+# Add a blank line between shell prompts
+add_newline = true
+
+# Timeout for commands executed by starship (in milliseconds)
+command_timeout = 1000
+
+# ------------------------------------------------------------------------------
+# MODULES
+# ------------------------------------------------------------------------------
+
+format = "$os$directory$git_branch$git_status$git_state$kubernetes$docker_context$package$c$cmake$cobol$daml$dart$deno$dotnet$elixir$elm$erlang$fennel$golang$guix_shell$haskell$haxe$helm$java$julia$kotlin$gradle$lua$nim$nodejs$ocaml$opa$perl$php$purescript$python$raku$rlang$red$ruby$rust$scala$solidity$swift$terraform$vlang$vagrant$zig$buf$nix_shell$conda$meson$spack$memory_usage$aws$gcloud$openstack$azure$env_var$crystal$custom$sudo$cmd_duration$line_break$jobs$battery$time$status$container$shell$character"
+
+# ------------------------------------------------------------------------------
+# MODULE CONFIGURATIONS
+# ------------------------------------------------------------------------------
+
+[directory]
+truncation_length = 3
+truncate_to_repo = false
+style = "bold cyan"
+read_only = " 🔒"
+
+[git_branch]
+symbol = " "
+style = "bold purple"
+
+[git_status]
+style = "bold red"
+conflicted = "🏳"
+up_to_date = "✅"
+untracked = "🤷"
+modified = "📝"
+staged = "++"
+renamed = "👅"
+deleted = "🗑"
+
+[kubernetes]
+disabled = false
+symbol = "☸ "
+style = "bold blue"
+format = '[$symbol$context( \($namespace\))]($style) '
+
+[docker_context]
+symbol = "🐳 "
+style = "blue dimmed"
+
+[nodejs]
+symbol = " "
+style = "bold green"
+
+[golang]
+symbol = " "
+style = "bold cyan"
+
+[rust]
+symbol = "🦀 "
+style = "bold red"
+
+[package]
+symbol = "📦 "
+disabled = true  # Often too noisy
+
+[memory_usage]
+disabled = true
+threshold = 75
+symbol = "🐏 "
+style = "bold dimmed white"
+
+[time]
+disabled = false
+style = "bold yellow"
+format = "[$time]($style) "
+use_12hr = false
+
+[cmd_duration]
+min_time = 2000
+style = "bold yellow"
+
+[character]
+success_symbol = "[➜](bold green)"
+error_symbol = "[➜](bold red)"
+vicmd_symbol = "[❮](bold green)"
