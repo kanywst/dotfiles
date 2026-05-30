@@ -51,7 +51,7 @@
                                 "from": {
                                     "key_code": "h",
                                     "modifiers": {
-                                        "mandatory": ["left_command", "left_control", "left_option", "left_shift"]
+                                        "mandatory": ["command", "control", "option", "shift"]
                                     }
                                 },
                                 "to": [{ "key_code": "left_arrow" }]
@@ -61,7 +61,7 @@
                                 "from": {
                                     "key_code": "j",
                                     "modifiers": {
-                                        "mandatory": ["left_command", "left_control", "left_option", "left_shift"]
+                                        "mandatory": ["command", "control", "option", "shift"]
                                     }
                                 },
                                 "to": [{ "key_code": "down_arrow" }]
@@ -71,7 +71,7 @@
                                 "from": {
                                     "key_code": "k",
                                     "modifiers": {
-                                        "mandatory": ["left_command", "left_control", "left_option", "left_shift"]
+                                        "mandatory": ["command", "control", "option", "shift"]
                                     }
                                 },
                                 "to": [{ "key_code": "up_arrow" }]
@@ -81,7 +81,7 @@
                                 "from": {
                                     "key_code": "l",
                                     "modifiers": {
-                                        "mandatory": ["left_command", "left_control", "left_option", "left_shift"]
+                                        "mandatory": ["command", "control", "option", "shift"]
                                     }
                                 },
                                 "to": [{ "key_code": "right_arrow" }]
