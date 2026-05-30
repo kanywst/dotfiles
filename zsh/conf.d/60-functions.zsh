@@ -3,6 +3,16 @@
 # mkdir + cd
 mkcd() { mkdir -p "$1" && cd "$1"; }
 
+# jump to the git toplevel of the current tree
+groot() {
+    local root
+    root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo "groot: not inside a git repo" >&2
+        return 1
+    }
+    cd "$root"
+}
+
 # Extract any archive
 extract() {
     if [[ ! -f "$1" ]]; then
