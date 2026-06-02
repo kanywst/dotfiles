@@ -204,8 +204,9 @@ chmod 600 ~/.zshrc.local
 
 `flake.nix` declaratively manages macOS system defaults and the Homebrew
 bundle. `username` is resolved at runtime via `builtins.getEnv "USER"`, so no
-account name is baked into the repo — the trade-off is that `--impure` is
-required (`nix flake check --impure`). Select your config with `#"$(whoami)"`.
+account name is baked into the repo. Real switches need `--impure` to read
+your `$USER`; pure eval (`nix flake check`) falls back to `user`. Select your
+config with `#"$(whoami)"`.
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \
