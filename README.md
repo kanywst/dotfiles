@@ -1,5 +1,7 @@
 # kanywst / dotfiles
 
+**English** | [日本語](README.ja.md)
+
 ![kanywst / dotfiles — synthwave macOS, 2026](assets/logo.png)
 
 ![tagline](https://readme-typing-svg.demolab.com/?font=Fira+Code&pause=700&color=00FFFF&width=620&height=44&lines=modern+macOS+dev+env;rust-flavoured+CLI+everywhere;atuin+%2B+fzf+%2B+starship;declarative+via+nix-darwin)
@@ -129,8 +131,8 @@ cd ~/dotfiles
 ./install.sh --delete    # uninstall
 ```
 
-stow が未インストールなら `brew install stow` を自動で打つ。conflict した
-ファイルは `*.backup` にリネームしてから link する。
+If stow isn't installed, `brew install stow` runs automatically. Conflicting
+files are renamed to `*.backup` before linking.
 
 ### 3. Tooling
 
@@ -200,10 +202,10 @@ chmod 600 ~/.zshrc.local
 
 ### 7. (Optional) nix-darwin
 
-`flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
-する。`username` は `builtins.getEnv "USER"` で実行時に解決するので、リポ
-にアカウント名を埋め込まない。代わりに `--impure` が必要 (`nix flake check
---impure`)。`#"$(whoami)"` で自分の構成を選ぶ。
+`flake.nix` declaratively manages macOS system defaults and the Homebrew
+bundle. `username` is resolved at runtime via `builtins.getEnv "USER"`, so no
+account name is baked into the repo — the trade-off is that `--impure` is
+required (`nix flake check --impure`). Select your config with `#"$(whoami)"`.
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \
@@ -212,13 +214,13 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \
 darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 ```
 
-何が起きるか:
+What it does:
 
-- `system.defaults` の項目 → `defaults write` 相当が走る (Dock 自動隠し、Dark Mode、Finder の隠しファイル表示 など)
-- `homebrew.brews / casks` のリストに対して `brew install` (`cleanup = "none"` なのでリスト外は消さない)
-- `~/.zshrc` / `~/.config/starship.toml` は触らない (stow の管轄)
+- `system.defaults` entries → the equivalent `defaults write` runs (Dock autohide, Dark Mode, Finder hidden files, etc.)
+- `brew install` against the `homebrew.brews / casks` lists (`cleanup = "none"`, so anything off-list is left alone)
+- `~/.zshrc` / `~/.config/starship.toml` are left untouched (stow's territory)
 
-やめる時:
+To uninstall:
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
