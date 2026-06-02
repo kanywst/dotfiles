@@ -7,7 +7,8 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 
 # Editor / locale
-export EDITOR="${EDITOR:-vim}"
+# unconditional: nix-darwin's /etc/zshenv exports EDITOR=nano before this, so ${EDITOR:-vim} would lose
+export EDITOR=vim
 export VISUAL="$EDITOR"
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
