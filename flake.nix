@@ -1,5 +1,5 @@
 {
-  description = "kanywst macOS — nix-darwin glue (macOS defaults + declarative Homebrew). Shell/zsh stays stow-managed.";
+  description = "kanywst macOS - nix-darwin glue (macOS defaults + declarative Homebrew). Shell/zsh stays stow-managed.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -23,7 +23,7 @@
     system = "aarch64-darwin";
     # Resolved from $USER at eval time (needs `--impure`) so this public repo
     # carries no account name. Under pure eval getEnv returns "", so fall back
-    # to "user" — that keeps `nix flake check` green in CI. Real switches use
+    # to "user" - that keeps `nix flake check` green in CI. Real switches use
     # `--impure` + `#"$(whoami)"` to pick up the actual user.
     username = let u = builtins.getEnv "USER"; in if u == "" then "user" else u;
   in {
@@ -93,7 +93,7 @@
 
           # Declarative Homebrew. nix-darwin keeps brew in sync with this list
           # on every `darwin-rebuild switch`. `cleanup = "zap"` removes anything
-          # not listed — keep that off ("none") until your brew list is fully
+          # not listed - keep that off ("none") until your brew list is fully
           # mirrored here, otherwise it will uninstall packages.
           homebrew = {
             enable = true;
