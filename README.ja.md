@@ -204,8 +204,9 @@ chmod 600 ~/.zshrc.local
 
 `flake.nix` は macOS の system defaults と Homebrew bundle を宣言的に管理
 する。`username` は `builtins.getEnv "USER"` で実行時に解決するので、リポ
-にアカウント名を埋め込まない。代わりに `--impure` が必要 (`nix flake check
---impure`)。`#"$(whoami)"` で自分の構成を選ぶ。
+にアカウント名を埋め込まない。実際の switch は `$USER` を読むため `--impure`
+が要る。pure eval (`nix flake check`) は `user` にフォールバックする。
+`#"$(whoami)"` で自分の構成を選ぶ。
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch \

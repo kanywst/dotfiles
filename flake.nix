@@ -21,10 +21,11 @@
   outputs = { self, nix-darwin, nixpkgs, home-manager }:
   let
     system = "aarch64-darwin";
-    # Resolved from $USER at eval time so this public repo carries no account
-    # name. Needs `--impure` (and `nix flake check --impure`); select your
-    # config with `#"$(whoami)"`.
-    username = builtins.getEnv "USER";
+    # Resolved from $USER at eval time (needs `--impure`) so this public repo
+    # carries no account name. Under pure eval getEnv returns "", so fall back
+    # to "user" — that keeps `nix flake check` green in CI. Real switches use
+    # `--impure` + `#"$(whoami)"` to pick up the actual user.
+    username = let u = builtins.getEnv "USER"; in if u == "" then "user" else u;
   in {
     homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
       pkgs = nixpkgs.legacyPackages.${system};
