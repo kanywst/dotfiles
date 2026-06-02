@@ -2,7 +2,7 @@
 
 [English](README.md) | **日本語**
 
-![kanywst / dotfiles — synthwave macOS, 2026](assets/logo.png)
+![kanywst / dotfiles - synthwave macOS, 2026](assets/logo.png)
 
 ![tagline](https://readme-typing-svg.demolab.com/?font=Fira+Code&pause=700&color=00FFFF&width=620&height=44&lines=modern+macOS+dev+env;rust-flavoured+CLI+everywhere;atuin+%2B+fzf+%2B+starship;declarative+via+nix-darwin)
 
@@ -22,35 +22,35 @@ exec zsh -l
 
 ## なぜ
 
-- **プラグインマネージャ不要** — zsh はファイル名順で `conf.d/NN-*.zsh` を読むだけ。壊れる要素も更新する要素もない。
-- **ランタイム管理は一本化** — `mise` が node / python / go / rust をグローバルに pin。NVM / pyenv / nodebrew は撤廃。
-- **brew の single source of truth** — `flake.nix` が bundle を宣言し、`darwin-rebuild switch` で同期。
-- **秘匿情報は tracked ファイルに入れない** — `~/.zshrc.local` を `.zshrc` が最後に source し、gitignore してある。
+- **プラグインマネージャ不要**: zsh はファイル名順で `conf.d/NN-*.zsh` を読むだけ。壊れる要素も更新する要素もない。
+- **ランタイム管理は一本化**: `mise` が node / python / go / rust をグローバルに pin。NVM / pyenv / nodebrew は撤廃。
+- **brew の single source of truth**: `flake.nix` が bundle を宣言し、`darwin-rebuild switch` で同期。
+- **秘匿情報は tracked ファイルに入れない**: `~/.zshrc.local` を `.zshrc` が最後に source し、gitignore してある。
 
 ## 中身
 
-- Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
-- Atuin — sqlite バックエンドの履歴、daemon・workspace フィルタ・`Ctrl-R`
-- mise + direnv — ランタイム pin + ディレクトリ単位の env + repo タスク
-- uv / bun — 高速な Python + JS パッケージ管理
-- nix-darwin — flake 駆動の macOS defaults + brew bundle
-- GNU stow — モジュール化した `conf.d` zsh、プラグインマネージャなし
-- Starship — プロンプトに k8s / docker / direnv / git ステータス
-- fzf + fzf-tab + carapace — 500+ CLI 横断のプレビュー付き補完
-- lazygit / lazydocker / k9s — 定番まわりの TUI
-- ghq + fzf — `repo` でディスク上のどこへでもジャンプ
-- Ghostty — ターミナル設定を tracked (テーマ・split・mac-alt)
-- lefthook + gitleaks — 高速並列の pre-commit フック + シークレットスキャン
-- aichat — シェル上のマルチモデル LLM CLI
-- jj (Jujutsu) — git 互換のモダン VCS、repo ごとに git と colocate
-- AeroSpace — i3 ライクなタイル型 WM (SIP 無効化不要)
-- Karabiner-Elements — Caps Lock → Hyper Key + hjkl 矢印キー
+- Rust CLI: eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
+- Atuin: sqlite バックエンドの履歴、daemon・workspace フィルタ・`Ctrl-R`
+- mise + direnv: ランタイム pin + ディレクトリ単位の env + repo タスク
+- uv / bun: 高速な Python + JS パッケージ管理
+- nix-darwin: flake 駆動の macOS defaults + brew bundle
+- GNU stow: モジュール化した `conf.d` zsh、プラグインマネージャなし
+- Starship: プロンプトに k8s / docker / direnv / git ステータス
+- fzf + fzf-tab + carapace: 500+ CLI 横断のプレビュー付き補完
+- lazygit / lazydocker / k9s: 定番まわりの TUI
+- ghq + fzf: `repo` でディスク上のどこへでもジャンプ
+- Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
+- lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
+- aichat: シェル上のマルチモデル LLM CLI
+- jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
+- AeroSpace: i3 ライクなタイル型 WM (SIP 無効化不要)
+- Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
 
 ## スタック
 
 | レイヤ | ツール | 置き換え対象 |
 | --- | --- | --- |
-| Shell | zsh | — |
+| Shell | zsh | - |
 | Terminal | ghostty | iTerm2 / Alacritty / wezterm |
 | Prompt | starship | oh-my-zsh テーマ |
 | Completion | carapace + fzf-tab | ツール別の補完スクリプト |
@@ -272,7 +272,7 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 | `gcf` / `gri` / `grc` / `gra` | commit --fixup / rebase -i / --continue / --abort |
 | `lg` | lazygit |
 
-### Jujutsu (jj) — git 互換
+### Jujutsu (jj), git 互換
 
 | Cmd | 動作 |
 | --- | --- |
@@ -345,7 +345,7 @@ cd <repo> && jj git init --colocate
 | Cmd | 動作 |
 | --- | --- |
 | `ai` | aichat (マルチモデル LLM) |
-| `ask "<task>"` | aichat -e — 自然言語 → シェル |
+| `ask "<task>"` | aichat -e: 自然言語 → シェル |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine ベンチ |
@@ -389,7 +389,7 @@ cd <repo> && jj git init --colocate
 | `Ctrl-←` / `Ctrl-→` | 単語ジャンプ |
 | `Ctrl-X Ctrl-E` | 現在のコマンドラインを `$EDITOR` で編集 |
 | `Caps Lock` (タップ) | Escape (Karabiner) |
-| `Caps Lock` (長押し) | Hyper Key — cmd+ctrl+opt+shift |
+| `Caps Lock` (長押し) | Hyper Key (cmd+ctrl+opt+shift) |
 | `Hyper + h/j/k/l` | 矢印キー |
 
 ### AeroSpace (タイル型 WM)
@@ -411,7 +411,7 @@ cd <repo> && jj git init --colocate
 - `.zshrc` は 30行のローダー。本体は `zsh/conf.d/NN-*.zsh`。プレフィックスが読込順を決める (`00-env` → `99-local`)。
 - `typeset -U path PATH` が `PATH` を自動で重複排除。
 - NVM / nodebrew / pyenv は撤廃。走るのは `mise activate zsh` のみ。
-- `$BREW_PREFIX` はシェルごとに1回キャッシュして `brew --prefix` の 50–100 ms を省く。
+- `$BREW_PREFIX` はシェルごとに1回キャッシュして `brew --prefix` の 50-100 ms を省く。
 - `compinit` の dump 再構築は最大でも24時間に1回。
 - Atuin は Ctrl-R のみ担当 (`--disable-up-arrow`)。↑ は zsh の prefix 検索のまま。
 - `conf.d/` は stow 対象外で `$DOTFILES_ZSH_DIR/conf.d/` から source。

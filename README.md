@@ -2,7 +2,7 @@
 
 **English** | [日本語](README.ja.md)
 
-![kanywst / dotfiles — synthwave macOS, 2026](assets/logo.png)
+![kanywst / dotfiles - synthwave macOS, 2026](assets/logo.png)
 
 ![tagline](https://readme-typing-svg.demolab.com/?font=Fira+Code&pause=700&color=00FFFF&width=620&height=44&lines=modern+macOS+dev+env;rust-flavoured+CLI+everywhere;atuin+%2B+fzf+%2B+starship;declarative+via+nix-darwin)
 
@@ -22,35 +22,35 @@ exec zsh -l
 
 ## Why
 
-- **No plugin-manager runtime** — zsh loads `conf.d/NN-*.zsh` by filename order. Nothing to break, nothing to update.
-- **One runtime manager** — `mise` pins node / python / go / rust globally. NVM / pyenv / nodebrew retired.
-- **One brew source of truth** — `flake.nix` declares the bundle. `darwin-rebuild switch` reconciles.
-- **Secrets never enter tracked files** — `~/.zshrc.local` is sourced last by `.zshrc` and gitignored.
+- **No plugin-manager runtime**: zsh loads `conf.d/NN-*.zsh` by filename order. Nothing to break, nothing to update.
+- **One runtime manager**: `mise` pins node / python / go / rust globally. NVM / pyenv / nodebrew retired.
+- **One brew source of truth**: `flake.nix` declares the bundle. `darwin-rebuild switch` reconciles.
+- **Secrets never enter tracked files**: `~/.zshrc.local` is sourced last by `.zshrc` and gitignored.
 
 ## What's inside
 
-- Rust CLI — eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
-- Atuin — sqlite-backed history with daemon, workspace filter, `Ctrl-R`
-- mise + direnv — runtime pinning + per-directory env + repo tasks
-- uv / bun — fast Python + JS package management
-- nix-darwin — flake-driven macOS defaults + brew bundle
-- GNU stow — modular `conf.d` zsh, no plugin manager
-- Starship — k8s / docker / direnv / git status in the prompt
-- fzf + fzf-tab + carapace — preview-driven completion across 500+ CLIs
-- lazygit / lazydocker / k9s — TUIs for the obvious things
-- ghq + fzf — `repo` jumps to anything on disk
-- Ghostty — terminal config tracked (theme, splits, mac-alt)
-- lefthook + gitleaks — fast parallel pre-commit hooks + secret scanning
-- aichat — multi-model LLM CLI in the shell
-- jj (Jujutsu) — git-compatible modern VCS, colocated with git per-repo
-- AeroSpace — i3-like tiling WM (no SIP disable)
-- Karabiner-Elements — Caps Lock → Hyper Key + hjkl arrow keys
+- Rust CLI: eza / bat / fd / ripgrep / delta / btop / zoxide / yazi / xh / ast-grep / procs / dust / sd / hyperfine / tokei / onefetch
+- Atuin: sqlite-backed history with daemon, workspace filter, `Ctrl-R`
+- mise + direnv: runtime pinning + per-directory env + repo tasks
+- uv / bun: fast Python + JS package management
+- nix-darwin: flake-driven macOS defaults + brew bundle
+- GNU stow: modular `conf.d` zsh, no plugin manager
+- Starship: k8s / docker / direnv / git status in the prompt
+- fzf + fzf-tab + carapace: preview-driven completion across 500+ CLIs
+- lazygit / lazydocker / k9s: TUIs for the obvious things
+- ghq + fzf: `repo` jumps to anything on disk
+- Ghostty: terminal config tracked (theme, splits, mac-alt)
+- lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
+- aichat: multi-model LLM CLI in the shell
+- jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
+- AeroSpace: i3-like tiling WM (no SIP disable)
+- Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
 
 ## Stack
 
 | Layer | Tool | Replaces |
 | --- | --- | --- |
-| Shell | zsh | — |
+| Shell | zsh | - |
 | Terminal | ghostty | iTerm2 / Alacritty / wezterm |
 | Prompt | starship | oh-my-zsh themes |
 | Completion | carapace + fzf-tab | per-tool completion scripts |
@@ -272,7 +272,7 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 | `gcf` / `gri` / `grc` / `gra` | commit --fixup / rebase -i / --continue / --abort |
 | `lg` | lazygit |
 
-### Jujutsu (jj) — git-compatible
+### Jujutsu (jj), git-compatible
 
 | Cmd | Action |
 | --- | --- |
@@ -345,7 +345,7 @@ cd <repo> && jj git init --colocate
 | Cmd | Action |
 | --- | --- |
 | `ai` | aichat (multi-model LLM) |
-| `ask "<task>"` | aichat -e — natural language → shell |
+| `ask "<task>"` | aichat -e: natural language → shell |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine benchmark |
@@ -389,7 +389,7 @@ cd <repo> && jj git init --colocate
 | `Ctrl-←` / `Ctrl-→` | word-jump |
 | `Ctrl-X Ctrl-E` | edit current command line in `$EDITOR` |
 | `Caps Lock` (tap) | Escape (Karabiner) |
-| `Caps Lock` (hold) | Hyper Key — cmd+ctrl+opt+shift |
+| `Caps Lock` (hold) | Hyper Key (cmd+ctrl+opt+shift) |
 | `Hyper + h/j/k/l` | arrow keys |
 
 ### AeroSpace (tiling WM)
@@ -411,7 +411,7 @@ cd <repo> && jj git init --colocate
 - `.zshrc` is a 30-line loader; real config lives in `zsh/conf.d/NN-*.zsh`. Prefix decides load order (`00-env` → `99-local`).
 - `typeset -U path PATH` dedupes `PATH` automatically.
 - NVM / nodebrew / pyenv are retired; only `mise activate zsh` runs.
-- `$BREW_PREFIX` is cached once per shell to skip 50–100 ms of `brew --prefix`.
+- `$BREW_PREFIX` is cached once per shell to skip 50-100 ms of `brew --prefix`.
 - `compinit` rebuilds its dump at most once per 24 h.
 - Atuin owns Ctrl-R only (`--disable-up-arrow`); ↑ stays as zsh prefix-search.
 - `conf.d/` is excluded from stow and sourced from `$DOTFILES_ZSH_DIR/conf.d/`.
