@@ -21,10 +21,10 @@
   outputs = { self, nix-darwin, nixpkgs, home-manager }:
   let
     system = "aarch64-darwin";
-    # Hardcoded so the flake stays pure (no `builtins.getEnv` impurity) and
-    # works under `sudo` without USER/HOME propagation gymnastics. Fork
-    # & rename if another user adopts this repo.
-    username = "user";
+    # Resolved from $USER at eval time so this public repo carries no account
+    # name. Needs `--impure` (and `nix flake check --impure`); select your
+    # config with `#"$(whoami)"`.
+    username = builtins.getEnv "USER";
   in {
     homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
       pkgs = nixpkgs.legacyPackages.${system};
