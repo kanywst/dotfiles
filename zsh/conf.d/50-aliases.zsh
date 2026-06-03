@@ -192,6 +192,12 @@ if command -v bun &>/dev/null; then
     alias bt='bun test'
 fi
 
+# Homebrew: HOMEBREW_NO_AUTO_UPDATE=1 (00-env.zsh) keeps `brew install` fast but
+# means the catalog goes stale. `brewup` forces an update before upgrading.
+if command -v brew &>/dev/null; then
+    alias brewup='HOMEBREW_NO_AUTO_UPDATE= brew update && brew upgrade && brew upgrade --cask'
+fi
+
 # ----- AI -----
 if command -v aichat &>/dev/null; then
     alias ai='aichat'
