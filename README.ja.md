@@ -42,6 +42,7 @@ exec zsh -l
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
 - aichat: シェル上のマルチモデル LLM CLI
+- `work`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - AeroSpace: i3 ライクなタイル型 WM (SIP 無効化不要)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
@@ -84,6 +85,7 @@ exec zsh -l
 | Tile WM | AeroSpace | yabai (SIP 無効が必要) / Magnet |
 | Keymap | Karabiner-Elements | macOS システム設定 |
 | App Store | mas | 手動の GUI インストール |
+| Updater | `work` (bin/) | 場当たり的な `brew upgrade` / `nix flake update` |
 | System | nix-darwin | 手動の `defaults write` |
 | User env | home-manager (input 結線済み) | stow のみ |
 | Linker | GNU stow | 手書きの `ln -s` スクリプト |
@@ -376,6 +378,23 @@ cd <repo> && jj git init --colocate
 | `flushdns` | macOS の DNS キャッシュフラッシュ |
 | `showfiles` / `hidefiles` | Finder の隠しファイル表示トグル |
 | `reload` / `sz` / `ez` | シェル再読込 / source / zshrc 編集 |
+
+### 更新
+
+`work` (`bin` stow パッケージ、`~/.local/bin/work` にリンク) で全部まとめて上げる。
+このマシンは nix-darwin の宣言的構成なので、システムの正規経路は `brew upgrade`
+単体ではなく `nix flake update` + `darwin-rebuild switch`。nix が管理しないユーザー
+領域のマネージャもこれに合わせて更新する。各ステップの出力は gum スピナーの裏に隠れ、
+失敗したときだけ表示される。
+
+| Cmd | 動作 |
+| --- | --- |
+| `work` | 全部更新: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
+| `work -v` | 同上、各コマンドの出力をライブ表示 |
+| `work -h` | ヘルプ |
+
+sudo は最初に一度だけ要求 (nix-darwin switch 用)。`cargo`/`go` バイナリは一括更新
+手段が無いので意図的に対象外。
 
 ### キーバインド
 
