@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# work — one-shot "update everything" run for the start of a work session.
+#
+# This machine is nix-darwin declarative (see zsh/conf.d/00-env.zsh:
+# HOMEBREW_NO_AUTO_UPDATE=1, "nix-darwin owns reconciliation"). So the canonical
+# system update is `nix flake update` + `darwin-rebuild switch`, NOT a bare
+# `brew upgrade`. nix doesn't manage the per-user tool managers though
+# (rustup / mise / npm-g / krew / gh extensions), so those are bumped here too.
+#
+# Runs every step unattended — no per-step confirmation. The only interactive
+# point is sudo for darwin-rebuild, which is asked for up front.
+#
+# UI: when `gum` is present each step gets a spinner; command output is hidden
+# unless the step fails (--show-error) or --verbose is passed (--show-output).
+# Without gum it degrades to plain, still-readable output.
+#
+# Usage:
+#   work               # update everything (pretty)
+#   work -v|--verbose  # stream every command's output live
+#   work -h|--help     # show this help
+
+set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
+
+export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+
+# ---- palette (256-color; Ghostty is truecolor) ---------------------------
+P=$'\e[38;5;212m'   # pink
+G=$'\e[38;5;84m'    # green
+R=$'\e[38;5;203m'   # red
+D=$'\e[38;5;244m'   # dim grey
+C=$'\e[38;5;117m'   # cyan
+B=$'\e[1m'; X=$'\e[0m'
+
+have() { command -v "$1" >/dev/null 2>&1; }
+HAS_GUM=false; have gum && HAS_GUM=true
+
+# Spinner output mode: hidden-until-failure by default, live when verbose.
+SPIN_FLAGS=(--show-error)
+
+# ---- step bodies ---------------------------------------------------------
+# Pure work, no decoration: gum hides their stdout, so any echo here is noise.
+# Exported so `gum spin -- bash -c '<name>'` can see them in its subshell.
+
+# nix-darwin: bump flake inputs, then apply. Replicates mise.toml's
+# `darwin-switch` task (PATH propagated through sudo; HOME/USER deliberately
+# not, so nix doesn't write root-owned files into ~/.cache/nix).
+do_nix() {
+    cd "$DOTFILES_DIR" || return 1
+    nix flake update || return 1
+    local path who; path=$PATH; who=$(whoami)
+    if command -v darwin-rebuild >/dev/null 2>&1; then
+        sudo env "PATH=$path" darwin-rebuild switch --flake ".#$who"
+    else
+        sudo env "PATH=$path" \
+            nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#$who"
+    fi
+}
+
+# Homebrew lives partly outside the flake (casks, trial installs). Leading
+# `HOMEBREW_NO_AUTO_UPDATE=` un-sets the global opt-out for this run only so the
+# catalog actually refreshes before upgrading.
+do_brew() {
+    # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
+    HOMEBREW_NO_AUTO_UPDATE= brew update \
+        && brew upgrade \
+        && brew upgrade --cask \
+        && brew cleanup
+}
+
+do_rustup() { rustup update; }
+do_mise()   { mise upgrade; }
+
+# `npm update -g` stays within semver ranges, missing major bumps (ncu 16→22).
+# Re-install each globally-outdated package at @latest to cross majors too.
+do_npm() {
+    local -a specs=()
+    while IFS= read -r name; do
+        [[ -n "$name" ]] && specs+=("${name}@latest")
+    done < <(npm outdated -g --parseable --depth=0 2>/dev/null \
+                | awk -F: '{print $4}' | sed 's/@[^@]*$//')
+    ((${#specs[@]} == 0)) && return 0
+    npm install -g "${specs[@]}"
+}
+
+do_krew()  { kubectl krew upgrade; }
+do_gh()    { gh extension upgrade --all; }
+do_atuin() { atuin sync -f; }
+export -f do_nix do_brew do_rustup do_mise do_npm do_krew do_gh do_atuin
+
+# ---- guards: is this step applicable on this machine? --------------------
+g_nix()    { have nix; }
+g_brew()   { have brew; }
+g_rustup() { have rustup; }
+g_mise()   { have mise; }
+g_npm()    { have npm; }
+g_krew()   { have kubectl && kubectl krew version >/dev/null 2>&1; }
+g_gh()     { have gh; }
+g_atuin()  { have atuin; }
+
+# ---- orchestration -------------------------------------------------------
+declare -a DONE=() FAILED=() SKIPPED=()
+IDX=0
+TOTAL=8
+
+# step <emoji> <label> <spinner> <fn> <guard>
+step() {
+    local emoji="$1" label="$2" spin="$3" fn="$4" guard="$5"
+    IDX=$((IDX + 1))
+    local tag; tag=$(printf '[%d/%d]' "$IDX" "$TOTAL")
+
+    if ! "$guard"; then
+        printf '%s  %s %s %s — skipped (not installed)%s\n' \
+            "$D" "$tag" "$emoji" "$label" "$X"
+        SKIPPED+=("$label"); return
+    fi
+
+    local t0=$SECONDS rc
+    if $HAS_GUM; then
+        gum spin --spinner "$spin" \
+            --spinner.foreground 212 --title.foreground 252 \
+            --title "  $tag  $emoji  ${label}…" \
+            "${SPIN_FLAGS[@]}" -- bash -c "set -uo pipefail; $fn"
+        rc=$?
+    else
+        printf '%s▸ %s %s %s…%s\n' "$C" "$tag" "$emoji" "$label" "$X"
+        bash -c "set -uo pipefail; $fn"; rc=$?
+    fi
+    local dt=$((SECONDS - t0))
+
+    if ((rc == 0)); then
+        printf '%s  ✓%s %s %s %s%s(%ds)%s\n' "$G" "$X" "$emoji" "$label" "$D" "$D" "$dt" "$X"
+        DONE+=("$label")
+    else
+        printf '%s  ✗ %s %s failed%s %s(%ds — output above)%s\n' "$R" "$emoji" "$label" "$X" "$D" "$dt" "$X"
+        FAILED+=("$label")
+    fi
+}
+
+banner() {
+    if $HAS_GUM; then
+        gum style --border double --border-foreground 212 \
+            --foreground 213 --bold --align center \
+            --padding "1 6" --margin "1 0" --width 48 \
+            "⚡  W O R K  ⚡" "" "let's get you up to date"
+        printf '%s   %s · %s%s\n' "$D" "$(hostname -s)" "$(date '+%a %d %b %H:%M')" "$X"
+    else
+        printf '\n%s%s⚡ work%s — %s · %s\n\n' "$B" "$P" "$X" "$(hostname -s)" "$(date '+%a %d %b %H:%M')"
+    fi
+}
+
+summary() {
+    local elapsed=$1
+    local dn="${DONE[*]:-—}"  sk="${SKIPPED[*]:-—}"  fl="${FAILED[*]:-—}"
+    local counts; counts=$(printf '✅ %d updated   💤 %d skipped   ❌ %d failed' \
+        "${#DONE[@]}" "${#SKIPPED[@]}" "${#FAILED[@]}")
+
+    local head color=84
+    if ((${#FAILED[@]})); then head="💥  finished with errors  ·  ${elapsed}s"; color=203
+    else                       head="🎉  all done  ·  ${elapsed}s"; fi
+
+    if $HAS_GUM; then
+        gum style --border rounded --border-foreground "$color" \
+            --padding "1 3" --margin "1 0" \
+            "$head" "" "$counts" \
+            "${C}updated${X}  $dn" \
+            "${D}skipped  $sk${X}" \
+            "${R}failed   $fl${X}"
+    else
+        printf '\n%s── %s ──%s\n%s\n' "$P" "$head" "$X" "$counts"
+        printf '  updated: %s\n  skipped: %s\n  failed:  %s\n' "$dn" "$sk" "$fl"
+    fi
+
+    # Footnote: tools with no clean bulk-update path — flagged so it's obvious
+    # they're intentionally untouched, not forgotten.
+    printf '%s  · cargo/go bins are not auto-updated (no bulk updater here)%s\n' "$D" "$X"
+}
+
+# ---- main ----------------------------------------------------------------
+while (($#)); do
+    case "$1" in
+        -h|--help)
+            # Print the contiguous comment block (skip the shebang, stop at the
+            # first non-comment line), stripping the leading "# ".
+            awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
+            exit 0 ;;
+        -v|--verbose) SPIN_FLAGS=(--show-output); shift ;;
+        *) printf '%sunknown argument: %s%s\ntry: work --help\n' "$R" "$1" "$X" >&2; exit 2 ;;
+    esac
+done
+
+banner
+start=$SECONDS
+
+printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$X"
+sudo -v   # prompt once, up front, instead of mid-run.
+echo
+
+step "❄️"  "nix-darwin"    globe   do_nix    g_nix
+step "🍺"  "homebrew"      meter   do_brew   g_brew
+step "🦀"  "rustup"        monkey  do_rustup g_rustup
+step "🧰"  "mise"          minidot do_mise   g_mise
+step "📦"  "npm globals"   line    do_npm    g_npm
+step "☸️"  "krew"          points  do_krew   g_krew
+step "🐙"  "gh extensions" pulse   do_gh     g_gh
+step "🐢"  "atuin"         moon    do_atuin  g_atuin
+
+summary $((SECONDS - start))
+((${#FAILED[@]} == 0))
