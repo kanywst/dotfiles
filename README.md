@@ -42,6 +42,7 @@ exec zsh -l
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
 - aichat: multi-model LLM CLI in the shell
+- `work`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - AeroSpace: i3-like tiling WM (no SIP disable)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
@@ -84,6 +85,7 @@ exec zsh -l
 | Tile WM | AeroSpace | yabai (needs SIP off) / Magnet |
 | Keymap | Karabiner-Elements | macOS System Settings |
 | App Store | mas | manual GUI installs |
+| Updater | `work` (bin/) | ad-hoc `brew upgrade` / `nix flake update` runs |
 | System | nix-darwin | manual `defaults write` |
 | User env | home-manager (input wired) | stow only |
 | Linker | GNU stow | hand-rolled `ln -s` scripts |
@@ -376,6 +378,23 @@ cd <repo> && jj git init --colocate
 | `flushdns` | macOS DNS cache flush |
 | `showfiles` / `hidefiles` | Finder hidden toggle |
 | `reload` / `sz` / `ez` | reload shell / source / edit zshrc |
+
+### Updating
+
+`work` (in the `bin` stow package, linked to `~/.local/bin/work`) bumps
+everything in one run. This box is nix-darwin declarative, so the system path is
+`nix flake update` + `darwin-rebuild switch` — not a bare `brew upgrade`; the
+per-user managers nix doesn't own are bumped alongside it. Output is hidden
+behind a gum spinner per step and only surfaces on failure.
+
+| Cmd | Action |
+| --- | --- |
+| `work` | update everything: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
+| `work -v` | same, but stream every command's output live |
+| `work -h` | help |
+
+Sudo is requested once up front (for the nix-darwin switch). `cargo`/`go`
+binaries are intentionally left alone — no clean bulk-updater is installed.
 
 ### Key bindings
 
