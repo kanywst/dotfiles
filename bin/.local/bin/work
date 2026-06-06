@@ -42,17 +42,20 @@ SPIN_FLAGS=(--show-error)
 # Exported so `gum spin -- bash -c '<name>'` can see them in its subshell.
 
 # nix-darwin: bump flake inputs, then apply. Replicates mise.toml's
-# `darwin-switch` task (PATH propagated through sudo; HOME/USER deliberately
-# not, so nix doesn't write root-owned files into ~/.cache/nix).
+# `darwin-switch` task. PATH and USER are propagated through sudo; HOME is
+# deliberately not, so nix doesn't write root-owned files into ~/.cache/nix.
+# USER + --impure are required because flake.nix resolves the config name from
+# `builtins.getEnv "USER"`; without them eval falls back to "user" and the
+# `.#$who` attribute (e.g. darwinConfigurations.takumaniwa) won't exist.
 do_nix() {
     cd "$DOTFILES_DIR" || return 1
     nix flake update || return 1
     local path who; path=$PATH; who=$(whoami)
     if command -v darwin-rebuild >/dev/null 2>&1; then
-        sudo env "PATH=$path" darwin-rebuild switch --flake ".#$who"
+        sudo env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
     else
-        sudo env "PATH=$path" \
-            nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#$who"
+        sudo env "PATH=$path" "USER=$who" \
+            nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
     fi
 }
 
