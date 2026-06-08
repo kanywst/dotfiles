@@ -12,7 +12,7 @@
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STOW_PACKAGES=(zsh git starship atuin ghostty jj aerospace karabiner bin)
+STOW_PACKAGES=(zsh git starship atuin ghostty jj aerospace karabiner bin homebrew)
 
 err()  { printf '\e[31m✗\e[0m %s\n' "$*" >&2; }
 info() { printf '\e[34m▸\e[0m %s\n' "$*"; }
