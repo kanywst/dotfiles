@@ -1,5 +1,14 @@
 {
+  "trustedformulae": [
+    "anomalyco/tap/opencode",
+    "charmbracelet/tap/crush",
+    "charmbracelet/tap/vhs",
+    "kanywst/tap/approval-hub",
+    "ory/tap/cli",
+    "oven-sh/bun/bun"
+  ],
   "trustedcasks": [
+    "kanywst/y509/y509",
     "nikitabobko/tap/aerospace"
   ]
 }
