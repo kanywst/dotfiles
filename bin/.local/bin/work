@@ -66,7 +66,13 @@ do_nix() {
 # Homebrew lives partly outside the flake (casks, trial installs). Leading
 # `HOMEBREW_NO_AUTO_UPDATE=` un-sets the global opt-out for this run only so the
 # catalog actually refreshes before upgrading.
+#
+# HOMEBREW_NO_ASK=1: ask-mode is on by default now (brew prints the upgrade plan
+# and prompts "proceed? [y/n]"). That prompt runs inside `gum spin`, which hides
+# stdout/stderr, so it would hang invisibly forever (same trap as the sudo one).
+# This is an unattended run, so disable ask-mode and just proceed.
 do_brew() {
+    export HOMEBREW_NO_ASK=1   # runs in its own bash -c subshell; scope is this step.
     # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
     HOMEBREW_NO_AUTO_UPDATE= brew update \
         && brew upgrade \
