@@ -51,10 +51,14 @@ do_nix() {
     cd "$DOTFILES_DIR" || return 1
     nix flake update || return 1
     local path who; path=$PATH; who=$(whoami)
+    # `sudo -n`: this runs inside `gum spin`, which swallows the password
+    # prompt. The credential was already cached by the up-front `sudo -v`, so
+    # -n succeeds here; if it has expired, -n fails fast with a visible error
+    # instead of hanging on an invisible prompt.
     if command -v darwin-rebuild >/dev/null 2>&1; then
-        sudo env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
+        sudo -n env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
     else
-        sudo env "PATH=$path" "USER=$who" \
+        sudo -n env "PATH=$path" "USER=$who" \
             nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
     fi
 }
@@ -91,7 +95,10 @@ do_atuin() { atuin sync -f; }
 export -f do_nix do_brew do_rustup do_mise do_npm do_krew do_gh do_atuin
 
 # ---- guards: is this step applicable on this machine? --------------------
-g_nix()    { have nix; }
+# nix-darwin also needs sudo. If the up-front `sudo -v` failed (SUDO_OK=false),
+# return false here so the step is cleanly skipped — otherwise darwin-rebuild's
+# own sudo prompt gets buried inside the gum spinner and the run hangs forever.
+g_nix()    { have nix && $SUDO_OK; }
 g_brew()   { have brew; }
 g_rustup() { have rustup; }
 g_mise()   { have mise; }
@@ -104,16 +111,17 @@ g_atuin()  { have atuin; }
 declare -a DONE=() FAILED=() SKIPPED=()
 IDX=0
 TOTAL=8
+SUDO_OK=true   # flipped to false below if the up-front `sudo -v` fails.
 
 # step <emoji> <label> <spinner> <fn> <guard>
 step() {
-    local emoji="$1" label="$2" spin="$3" fn="$4" guard="$5"
+    local emoji="$1" label="$2" spin="$3" fn="$4" guard="$5" reason="${6:-not installed}"
     IDX=$((IDX + 1))
     local tag; tag=$(printf '[%d/%d]' "$IDX" "$TOTAL")
 
     if ! "$guard"; then
-        printf '%s  %s %s %s — skipped (not installed)%s\n' \
-            "$D" "$tag" "$emoji" "$label" "$X"
+        printf '%s  %s %s %s — skipped (%s)%s\n' \
+            "$D" "$tag" "$emoji" "$label" "$reason" "$X"
         SKIPPED+=("$label"); return
     fi
 
@@ -195,10 +203,18 @@ banner
 start=$SECONDS
 
 printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$X"
-sudo -v   # prompt once, up front, instead of mid-run.
+# Prompt once, up front, instead of mid-run. If this fails (wrong password,
+# no sudo rights), DON'T plough ahead: every sudo inside a step runs under
+# `gum spin`, which hides stdout/stderr, so a second prompt would be invisible
+# and the run would hang on it forever (the "3156s" hang). Record the failure
+# and let g_nix skip nix-darwin cleanly while the non-sudo managers still run.
+if ! sudo -v; then
+    SUDO_OK=false
+    printf '%s  ⚠️  sudo not authorized — skipping nix-darwin, running the rest.%s\n' "$R" "$X"
+fi
 echo
 
-step "❄️"  "nix-darwin"    globe   do_nix    g_nix
+step "❄️"  "nix-darwin"    globe   do_nix    g_nix    "needs nix + sudo"
 step "🍺"  "homebrew"      meter   do_brew   g_brew
 step "🦀"  "rustup"        monkey  do_rustup g_rustup
 step "🧰"  "mise"          minidot do_mise   g_mise
