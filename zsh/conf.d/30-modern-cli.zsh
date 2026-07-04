@@ -1,7 +1,9 @@
 # 30-modern-cli.zsh — Rust-based replacements for classic Unix tools
 
 # zoxide — `cd` is shadowed; `zi` for interactive
+# _ZO_DOCTOR=0: conf.d loads by number so zoxide isn't last; its hook still works.
 if command -v zoxide &>/dev/null; then
+    export _ZO_DOCTOR=0
     eval "$(zoxide init zsh --cmd cd)"
 fi
 
@@ -31,7 +33,7 @@ command -v btop &>/dev/null && alias top='btop'
 # procs — modern ps (Rust)
 command -v procs &>/dev/null && alias ps='procs'
 
-# dust — modern du (Rust)
+# dust — modern du (Rust); `command du -sh` for the classic flags.
 command -v dust &>/dev/null && alias du='dust'
 
 # xh — modern curl/httpie (Rust)
