@@ -229,5 +229,9 @@ step "☸️"  "krew"          points  do_krew   g_krew
 step "🐙"  "gh extensions" pulse   do_gh     g_gh
 step "🐢"  "atuin"         moon    do_atuin  g_atuin
 
+# catch TOTAL drifting from the number of step calls above.
+((IDX == TOTAL)) || printf '%s  ⚠️  step count %d != TOTAL %d%s\n' \
+    "$R" "$IDX" "$TOTAL" "$X" >&2
+
 summary $((SECONDS - start))
 ((${#FAILED[@]} == 0))
