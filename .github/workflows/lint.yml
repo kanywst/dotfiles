@@ -55,6 +55,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      # Magic Nix Cache was sunset upstream; --no-build caches nothing anyway.
       - name: flake check (no build — darwin attrs need macOS)
         run: nix flake check --no-build
