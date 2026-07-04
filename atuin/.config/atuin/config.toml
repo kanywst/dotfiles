@@ -8,9 +8,11 @@
 
 ## ---------- search ----------
 filter_mode = "global"
+# no-op while up-arrow is disabled (see below), kept for if it's re-enabled.
 filter_mode_shell_up_key_binding = "session"
 workspaces = true
-search_mode = "fuzzy"
+# daemon-fuzzy: search via the daemon index, not sqlite. Needs [daemon] below.
+search_mode = "daemon-fuzzy"
 style = "compact"
 inline_height = 25
 show_preview = true
@@ -28,6 +30,8 @@ sync_address = "https://api.atuin.sh"
 ## ---------- daemon ----------
 [daemon]
 enabled = true
+# atuin supervises its own daemon; no external service to wire up.
+autostart = true
 # daemon.sync_frequency is INTEGER seconds (not a duration string).
 # Top-level sync_frequency above accepts duration strings; the two fields
 # parse differently in atuin's settings.rs — don't unify them.
