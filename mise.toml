@@ -11,7 +11,7 @@ description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
 run = [
     "zsh -n zsh/.zshrc",
     "for f in zsh/conf.d/*.zsh; do [ -f \"$f\" ] || continue; echo == $f; zsh -n \"$f\" || exit 1; done",
-    "shellcheck -e SC1090,SC1091 install.sh",
+    "shellcheck -e SC1090,SC1091 install.sh 'bin/.local/bin/work'",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
 ]
@@ -31,8 +31,9 @@ run = "./install.sh --delete"
 [tasks.darwin-switch]
 description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
 # - PATH propagated through sudo because nix lives in the user's nix profile.
-# - USER/HOME NOT propagated: HOME=$HOME under sudo would have nix write
-#   root-owned files into ~/.cache/nix.
+# - USER + --impure: flake.nix reads the name from getEnv "USER", and sudo
+#   resets USER to root; without these the `.#$who` attr doesn't exist.
+# - HOME deliberately NOT propagated, else nix writes root-owned ~/.cache/nix.
 # - `$(whoami)` is captured BEFORE sudo so it resolves to the calling user;
 #   the flake's `username` is the one place that needs editing on a fork.
 # - First run before nix-darwin is installed has no `darwin-rebuild` binary,
@@ -40,13 +41,13 @@ description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
 run = '''
 path=$PATH; who=$(whoami)
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "PATH=$path" darwin-rebuild switch --flake ".#$who"
+    sudo env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
     # Explicit GitHub URL avoids depending on the `nix-darwin` registry alias,
     # which isn't guaranteed on a fresh machine without a flake registry fetch.
-    sudo env "PATH=$path" \
-        nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --flake ".#$who"
+    sudo env "PATH=$path" "USER=$who" \
+        nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
 fi
 '''
 
@@ -56,9 +57,10 @@ run = "nix flake check --no-build"
 
 [tasks.update]
 description = "Bump flake inputs and brew bundle"
+# Match work's do_brew: casks and cleanup too.
 run = [
     "nix flake update",
-    "brew update && brew upgrade",
+    "brew update && brew upgrade && brew upgrade --cask && brew cleanup",
 ]
 
 [tasks.hooks]
