@@ -19,6 +19,11 @@ export TERM="${TERM:-xterm-256color}"
 if [[ -z "$BREW_PREFIX" ]] && command -v brew &>/dev/null; then
     export BREW_PREFIX="$(brew --prefix)"
 fi
+# A non-login shell may not have brew on PATH yet; without a prefix the whole
+# 80-plugins stack no-ops. Fall back to the standard Apple-Silicon prefix.
+if [[ -z "$BREW_PREFIX" && -d /opt/homebrew ]]; then
+    export BREW_PREFIX="/opt/homebrew"
+fi
 
 # Homebrew: skip analytics ping and the auto-update on every `brew install`.
 # nix-darwin owns reconciliation; manual `brew install` is just for trial runs.
