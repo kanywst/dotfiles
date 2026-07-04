@@ -12,8 +12,9 @@ font-feature = +calt
 
 # ---------- theme ----------
 # Browse with `ghostty +list-themes`. Tokyo Night matches the synthwave-y
-# starship/atuin palette in this repo.
-theme = tokyonight
+# starship/atuin palette. Follows macOS appearance; dark is the everyday look
+# (system is pinned Dark).
+theme = dark:tokyonight,light:TokyoNight Day
 
 # ---------- window ----------
 background-opacity = 0.96
