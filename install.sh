@@ -48,7 +48,9 @@ adopt_conflicts() {
                 rm "$target"
             fi
         fi
-    done < <(find "$DOTFILES_DIR/$pkg" -type f -print0)
+        # -type l too: the homebrew package ships trust.json as a symlink, which
+        # plain -type f skips — leaving a real conflict at the target un-adopted.
+    done < <(find "$DOTFILES_DIR/$pkg" \( -type f -o -type l \) -print0)
 }
 
 action="${1:-link}"
