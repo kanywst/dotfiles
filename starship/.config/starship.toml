@@ -1,5 +1,8 @@
 # ~/.config/starship.toml
 
+# JSON schema for editor validation.
+"$schema" = 'https://starship.rs/config-schema.json'
+
 # ------------------------------------------------------------------------------
 # GLOBAL SETTINGS
 # ------------------------------------------------------------------------------
