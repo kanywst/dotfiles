@@ -20,9 +20,11 @@ if [[ -z "$BREW_PREFIX" ]] && command -v brew &>/dev/null; then
     export BREW_PREFIX="$(brew --prefix)"
 fi
 # A non-login shell may not have brew on PATH yet; without a prefix the whole
-# 80-plugins stack no-ops. Fall back to the standard Apple-Silicon prefix.
+# 80-plugins stack no-ops. Fall back to the standard Apple-Silicon prefix, and
+# since path_helper (/etc/zprofile) was skipped too, put brew's bins on PATH.
 if [[ -z "$BREW_PREFIX" && -d /opt/homebrew ]]; then
     export BREW_PREFIX="/opt/homebrew"
+    path=("$BREW_PREFIX/bin" "$BREW_PREFIX/sbin" $path)
 fi
 
 # Homebrew: skip analytics ping and the auto-update on every `brew install`.
