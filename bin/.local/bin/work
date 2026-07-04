@@ -104,7 +104,7 @@ export -f do_nix do_brew do_rustup do_mise do_npm do_krew do_gh do_atuin
 # nix-darwin also needs sudo. If the up-front `sudo -v` failed (SUDO_OK=false),
 # return false here so the step is cleanly skipped — otherwise darwin-rebuild's
 # own sudo prompt gets buried inside the gum spinner and the run hangs forever.
-g_nix()    { have nix && $SUDO_OK; }
+g_nix()    { have nix && [[ "$SUDO_OK" == true ]]; }
 g_brew()   { have brew; }
 g_rustup() { have rustup; }
 g_mise()   { have mise; }
