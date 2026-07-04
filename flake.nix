@@ -128,6 +128,7 @@
               "gitleaks"
               "glow"
               "go"
+              "gum"
               "hyperfine"
               "jj"
               "jq"
