@@ -16,6 +16,10 @@ pre-commit:
     shellcheck:
       glob: "*.sh"
       run: shellcheck -e SC1090,SC1091 {staged_files}
+    shellcheck-bin:
+      # `work` is bash but has no .sh extension, so the glob above skips it.
+      glob: "bin/.local/bin/*"
+      run: shellcheck -e SC1090,SC1091 {staged_files}
     markdownlint:
       glob: "*.md"
       run: npx --yes markdownlint-cli2 {staged_files}
