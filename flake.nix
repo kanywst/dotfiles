@@ -51,6 +51,17 @@
           nix.enable = false;
           nixpkgs.config.allowUnfree = true;
 
+          # Don't build the offline HTML manual. nix-darwin's manual builder
+          # hardcodes `nixos-render-docs manual html --toc-depth`, which
+          # nixpkgs-unstable (2026-07 onward) removed in favour of --sidebar-depth,
+          # so the build fails the switch until upstream nix-darwin catches up.
+          # `doc.enable` drops it from our own system-path; the uninstaller app
+          # embeds a defaults-built darwin-system that rebuilds the same manual,
+          # so it has to go too. man pages / info / package doc outputs are
+          # unaffected, and `darwin-rebuild`/the flake still uninstall fine.
+          documentation.doc.enable = false;
+          system.tools.darwin-uninstaller.enable = false;
+
           # The user nix-darwin manages on this Mac
           system.primaryUser = username;
           users.users.${username} = {
