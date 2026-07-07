@@ -29,7 +29,11 @@ warn() { printf '\e[33m!\e[0m %s\n' "$*" >&2; }
 do_mise() {
     have mise || { skip "mise not installed — skipping runtimes"; return; }
     info "mise: installing pinned runtimes"
-    mise install && ok "mise runtimes ready"
+    if mise install; then
+        ok "mise runtimes ready"
+    else
+        warn "mise: failed to install pinned runtimes"
+    fi
 }
 
 # ---- rustup toolchains ---------------------------------------------------
@@ -75,13 +79,16 @@ do_krew() {
 GH_EXTENSIONS=(dlvhdr/gh-dash)
 do_gh() {
     have gh || { skip "gh not installed — skipping extensions"; return; }
+    # column 2 is the repo (owner/name); match it exactly so a longer repo
+    # like dlvhdr/gh-dash-extended can't satisfy a check for dlvhdr/gh-dash.
+    # `gh extension list` has no header row, so don't strip the first line.
     local installed
-    if ! installed=$(gh extension list 2>/dev/null); then
+    if ! installed=$(gh extension list 2>/dev/null | cut -f2); then
         warn "gh: failed to list extensions"; return
     fi
     local failed=0
     for ext in "${GH_EXTENSIONS[@]}"; do
-        if grep -Fq "$ext" <<<"$installed"; then
+        if grep -Fqx "$ext" <<<"$installed"; then
             skip "gh ext $ext already installed"
         else
             info "gh: installing extension $ext"
