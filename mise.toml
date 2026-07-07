@@ -63,6 +63,10 @@ run = [
     "brew update && brew upgrade && brew upgrade --cask && brew cleanup",
 ]
 
+[tasks.bootstrap]
+description = "Install non-brew layers (mise runtimes, rustup, krew, gh ext)"
+run = "bin/.local/bin/bootstrap"
+
 [tasks.hooks]
 description = "Install lefthook git hooks"
 run = "lefthook install"

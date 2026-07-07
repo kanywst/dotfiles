@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# bootstrap — install the tool layers nix / brew / stow don't own.
+#
+# The reproducibility stack on this machine is layered:
+#   install.sh          → stow: dotfiles into $HOME
+#   darwin-rebuild switch → nix-darwin: macOS defaults + brew bundle + mas apps
+#   bootstrap (this)    → the per-user managers nix can't declare:
+#                         mise runtimes, rustup toolchains, krew plugins,
+#                         gh extensions.
+#
+# Every step is idempotent — re-running only installs what's missing. Run once
+# after `./install.sh` + `darwin-rebuild switch` on a fresh Mac; safe to re-run.
+# `work` keeps these same layers *updated*; this only handles first install.
+#
+# Usage:
+#   bootstrap            # install everything missing
+#   bootstrap -h|--help  # show this help
+
+set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
+
+have() { command -v "$1" >/dev/null 2>&1; }
+info() { printf '\e[34m▸\e[0m %s\n' "$*"; }
+ok()   { printf '\e[32m✓\e[0m %s\n' "$*"; }
+skip() { printf '\e[90m·\e[0m %s\n' "$*"; }
+warn() { printf '\e[33m!\e[0m %s\n' "$*" >&2; }
+
+# ---- mise runtimes -------------------------------------------------------
+# Installs whatever the nearest mise config pins (repo mise.toml pins node).
+do_mise() {
+    have mise || { skip "mise not installed — skipping runtimes"; return; }
+    info "mise: installing pinned runtimes"
+    mise install && ok "mise runtimes ready"
+}
+
+# ---- rustup toolchains ---------------------------------------------------
+do_rustup() {
+    have rustup || { skip "rustup not installed — skipping toolchains"; return; }
+    if ! rustup toolchain list 2>/dev/null | grep -q '^stable'; then
+        info "rustup: installing stable toolchain"
+        rustup toolchain install stable
+    fi
+    rustup default stable >/dev/null 2>&1
+    ok "rustup stable ready"
+}
+
+# ---- krew plugins --------------------------------------------------------
+# krew itself comes from brew; these are the plugins on top of it.
+KREW_PLUGINS=(images neat status tree view-secret)
+do_krew() {
+    if ! have kubectl || ! kubectl krew version >/dev/null 2>&1; then
+        skip "kubectl krew not available — skipping plugins"; return
+    fi
+    local installed; installed=$(kubectl krew list 2>/dev/null)
+    for p in "${KREW_PLUGINS[@]}"; do
+        if grep -qx "$p" <<<"$installed"; then
+            skip "krew/$p already installed"
+        else
+            info "krew: installing $p"
+            kubectl krew install "$p"
+        fi
+    done
+    ok "krew plugins ready"
+}
+
+# ---- gh extensions -------------------------------------------------------
+GH_EXTENSIONS=(dlvhdr/gh-dash)
+do_gh() {
+    have gh || { skip "gh not installed — skipping extensions"; return; }
+    local installed; installed=$(gh extension list 2>/dev/null)
+    for ext in "${GH_EXTENSIONS[@]}"; do
+        if grep -q "$ext" <<<"$installed"; then
+            skip "gh ext $ext already installed"
+        else
+            info "gh: installing extension $ext"
+            gh extension install "$ext"
+        fi
+    done
+    ok "gh extensions ready"
+}
+
+case "${1:-}" in
+    -h|--help)
+        awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
+        exit 0 ;;
+    "") ;;
+    *) warn "unknown argument: $1"; echo "try: bootstrap --help" >&2; exit 2 ;;
+esac
+
+do_mise
+do_rustup
+do_krew
+do_gh
+
+echo
+ok "bootstrap complete"
