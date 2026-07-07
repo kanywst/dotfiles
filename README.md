@@ -184,6 +184,7 @@ mise tasks ls           # list repo-level mise tasks
 mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
+mise run bootstrap      # install non-brew layers (mise/rustup/krew/gh ext)
 mise run hooks          # lefthook install (writes .git/hooks/*)
 mise run scan           # gitleaks detect on the full tree
 ```
@@ -220,13 +221,23 @@ darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 What it does:
 
 - `system.defaults` entries → the equivalent `defaults write` runs (Dock autohide, Dark Mode, Finder hidden files, etc.)
-- `brew install` against the `homebrew.brews / casks` lists (`cleanup = "none"`, so anything off-list is left alone)
+- `brew install` against the `homebrew.brews / casks / masApps` lists. These mirror `brew leaves` / `brew list --cask` / `mas list` on the live machine, so a fresh Mac reconciles to the same software set (`cleanup = "none"`, so anything off-list is left alone)
 - `~/.zshrc` / `~/.config/starship.toml` are left untouched (stow's territory)
 
 To uninstall:
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
+```
+
+### 8. Non-brew layers
+
+Some managers can't be declared in the flake — mise runtimes, rustup
+toolchains, krew plugins, gh extensions. `bootstrap` installs them
+idempotently (re-running only fills gaps); `work` keeps them updated later.
+
+```bash
+mise run bootstrap   # or: bootstrap
 ```
 
 ## Daily-driver reference

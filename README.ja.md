@@ -184,6 +184,7 @@ mise tasks ls           # repo レベルの mise タスク一覧
 mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
+mise run bootstrap      # brew 外の層を導入 (mise/rustup/krew/gh ext)
 mise run hooks          # lefthook install (.git/hooks/* を書く)
 mise run scan           # ツリー全体に gitleaks detect
 ```
@@ -220,13 +221,23 @@ darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 何が起きるか:
 
 - `system.defaults` の項目 → `defaults write` 相当が走る (Dock 自動隠し、Dark Mode、Finder の隠しファイル表示 など)
-- `homebrew.brews / casks` のリストに対して `brew install` (`cleanup = "none"` なのでリスト外は消さない)
+- `homebrew.brews / casks / masApps` のリストに対して `brew install`。これらは実機の `brew leaves` / `brew list --cask` / `mas list` をミラーしているので、新しい Mac でも同じソフト構成に収束する (`cleanup = "none"` なのでリスト外は消さない)
 - `~/.zshrc` / `~/.config/starship.toml` は触らない (stow の管轄)
 
 やめる時:
 
 ```bash
 sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
+```
+
+### 8. brew 外の層
+
+flake で宣言できない管理系 (mise runtime、rustup toolchain、krew プラグイン、
+gh 拡張) がある。`bootstrap` がそれらを冪等に導入する (再実行は不足分だけ埋める)。
+更新はあとで `work` が面倒を見る。
+
+```bash
+mise run bootstrap   # または: bootstrap
 ```
 
 ## 日常リファレンス
