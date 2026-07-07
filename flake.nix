@@ -103,9 +103,11 @@
           };
 
           # Declarative Homebrew. nix-darwin keeps brew in sync with this list
-          # on every `darwin-rebuild switch`. `cleanup = "zap"` removes anything
-          # not listed - keep that off ("none") until your brew list is fully
-          # mirrored here, otherwise it will uninstall packages.
+          # on every `darwin-rebuild switch`. This list mirrors `brew leaves` /
+          # `brew list --cask` / `mas list` on the live machine, so a fresh Mac
+          # reconciles to the same set. `cleanup = "zap"` removes anything not
+          # listed - keep that off ("none") until you're ready to let the flake
+          # be the sole authority, otherwise it will uninstall packages.
           homebrew = {
             enable = true;
             onActivation = {
@@ -113,71 +115,167 @@
               upgrade = false;
               cleanup = "none";
             };
-            # External taps. bun lives in oven-sh/bun, AeroSpace in nikitabobko/tap.
+            # External taps referenced by the brews / casks below.
             taps = [
-              "oven-sh/bun"
-              "nikitabobko/tap"
+              "anomalyco/tap"        # opencode
+              "charmbracelet/tap"    # crush, vhs
+              "kanywst/tap"          # approval-hub
+              "kanywst/y509"         # y509 cask
+              "nikitabobko/tap"      # aerospace cask
+              "ory/tap"              # ory cli
+              "oven-sh/bun"          # bun
             ];
             brews = [
+              # homebrew/core (bare name resolves against core)
               "actionlint"
               "aichat"
+              "ansible"
               "ast-grep"
               "atuin"
+              "awscli"
               "bat"
+              "binwalk"
               "btop"
-              "bun"
+              "caddy"
               "carapace"
+              "cmake"
+              "codespell"
+              "cosign"
+              "d2"
+              "diffoscope"
               "direnv"
               "dust"
+              "envoy"
+              "exiftool"
               "eza"
               "fd"
+              "flock"
+              "foremost"
+              "fswatch"
               "fzf"
               "fzf-tab"
               "gh"
               "ghq"
+              "git"
               "git-delta"
+              "git-filter-repo"
               "gitleaks"
               "glow"
               "go"
+              "golangci-lint"
+              "goreleaser"
+              "grpcurl"
+              "grype"
               "gum"
+              "helm"
+              "httpie"
+              "hubble"
               "hyperfine"
+              "imagemagick"
+              "istioctl"
               "jj"
               "jq"
+              "jqp"
+              "just"
               "k9s"
+              "kind"
+              "krew"
+              "kube-ps1"
+              "kubebuilder"
               "kubecolor"
               "kubectx"
               "kubernetes-cli"
+              "kustomize"
               "lazydocker"
               "lazygit"
               "lefthook"
+              "lima"
               "mas"
               "mise"
+              "mysql"
+              "nginx"
+              "node"
+              "node_exporter"
+              "nodebrew"
               "onefetch"
+              "opa"
+              "openblas"
+              "openjdk@17"
+              "opentofu"
+              "operator-sdk"
+              "osv-scanner"
+              "pillow"
+              "plantuml"
+              "pngcheck"
+              "pngquant"
+              "podman-compose"
+              "poppler"
               "procs"
+              "prometheus"
+              "protoc-gen-go"
+              "protoc-gen-go-grpc"
+              "pyenv-virtualenv"
+              "python@3.11"
+              "qemu"
+              "reattach-to-user-namespace"
               "ripgrep"
+              "rustup"
               "sd"
               "shellcheck"
+              "slsa-verifier"
               "starship"
+              "step"
               "stow"
+              "syft"
               "tlrc"
+              "tmux"
               "tokei"
+              "tor"
+              "traefik"
+              "unar"
+              "unzip"
               "uv"
+              "vegeta"
+              "vexctl"
+              "wget"
+              "wrk"
               "xh"
+              "yamllint"
               "yazi"
               "yq"
               "zellij"
+              "zig"
               "zoxide"
               "zsh-autosuggestions"
               "zsh-syntax-highlighting"
               "zstd"
+              # third-party taps (tap declared above)
+              "anomalyco/tap/opencode"
+              "charmbracelet/tap/crush"
+              "charmbracelet/tap/vhs"
+              "kanywst/tap/approval-hub"
+              "ory/tap/cli"
+              "oven-sh/bun/bun"
             ];
             casks = [
               "claude-code"
+              "codex"
+              "copilot-cli"
               "font-hack-nerd-font"
               "ghostty"
               "karabiner-elements"
+              "multipass"
+              "ollama-app"
+              "warp"
+              # third-party taps
+              "kanywst/y509/y509"
               "nikitabobko/tap/aerospace"
             ];
+            # App Store apps (needs `mas`, declared above). ID from `mas list`.
+            masApps = {
+              "Keynote" = 409183694;
+              "LINE" = 539883307;
+            };
           };
 
           system.stateVersion = 6;
