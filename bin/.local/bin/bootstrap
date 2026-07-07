@@ -37,10 +37,15 @@ do_rustup() {
     have rustup || { skip "rustup not installed — skipping toolchains"; return; }
     if ! rustup toolchain list 2>/dev/null | grep -q '^stable'; then
         info "rustup: installing stable toolchain"
-        rustup toolchain install stable
+        if ! rustup toolchain install stable; then
+            warn "rustup: failed to install stable toolchain"; return
+        fi
     fi
-    rustup default stable >/dev/null 2>&1
-    ok "rustup stable ready"
+    if rustup default stable >/dev/null 2>&1; then
+        ok "rustup stable ready"
+    else
+        warn "rustup: failed to set stable as default"
+    fi
 }
 
 # ---- krew plugins --------------------------------------------------------
@@ -50,32 +55,40 @@ do_krew() {
     if ! have kubectl || ! kubectl krew version >/dev/null 2>&1; then
         skip "kubectl krew not available — skipping plugins"; return
     fi
-    local installed; installed=$(kubectl krew list 2>/dev/null)
+    local installed
+    if ! installed=$(kubectl krew list 2>/dev/null); then
+        warn "krew: failed to list plugins"; return
+    fi
+    local failed=0
     for p in "${KREW_PLUGINS[@]}"; do
-        if grep -qx "$p" <<<"$installed"; then
+        if grep -Fqx "$p" <<<"$installed"; then
             skip "krew/$p already installed"
         else
             info "krew: installing $p"
-            kubectl krew install "$p"
+            kubectl krew install "$p" || failed=1
         fi
     done
-    ok "krew plugins ready"
+    if ((failed)); then warn "krew: some plugins failed to install"; else ok "krew plugins ready"; fi
 }
 
 # ---- gh extensions -------------------------------------------------------
 GH_EXTENSIONS=(dlvhdr/gh-dash)
 do_gh() {
     have gh || { skip "gh not installed — skipping extensions"; return; }
-    local installed; installed=$(gh extension list 2>/dev/null)
+    local installed
+    if ! installed=$(gh extension list 2>/dev/null); then
+        warn "gh: failed to list extensions"; return
+    fi
+    local failed=0
     for ext in "${GH_EXTENSIONS[@]}"; do
-        if grep -q "$ext" <<<"$installed"; then
+        if grep -Fq "$ext" <<<"$installed"; then
             skip "gh ext $ext already installed"
         else
             info "gh: installing extension $ext"
-            gh extension install "$ext"
+            gh extension install "$ext" || failed=1
         fi
     done
-    ok "gh extensions ready"
+    if ((failed)); then warn "gh: some extensions failed to install"; else ok "gh extensions ready"; fi
 }
 
 case "${1:-}" in
