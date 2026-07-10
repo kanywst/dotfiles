@@ -33,6 +33,23 @@ jobs:
             zsh -n "$f"
           done
 
+  trust-store-layout:
+    name: homebrew trust store layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Homebrew's write_trust_store() follows one symlink and refuses if the
+      # target is another symlink. A symlink stowed out of homebrew/ makes
+      # ~/.homebrew/trust.json a two-hop chain, which aborts the brew step of
+      # every `darwin-rebuild switch`. install.sh links that path directly.
+      - name: no symlinks tracked under homebrew/
+        run: |
+          links=$(git ls-files -s homebrew | awk '$1 == "120000" { print $4 }')
+          if [ -n "$links" ]; then
+            printf '::error::symlink tracked under homebrew/: %s\n' "$links"
+            exit 1
+          fi
+
   markdownlint:
     name: markdownlint
     runs-on: ubuntu-latest
