@@ -48,8 +48,15 @@ adopt_conflicts() {
                 rm "$target"
             fi
         fi
-        # -type l too: the homebrew package ships trust.json as a symlink, which
-        # plain -type f skips — leaving a real conflict at the target un-adopted.
+        # -type l too: catch any package file that is itself a symlink (plain
+        # -type f skips those, leaving a real conflict at the target un-adopted).
+        # NB: homebrew/trust.json is deliberately a *real* file in both
+        # .homebrew/ and .config/homebrew/, NOT a symlink to its sibling —
+        # Homebrew's trust-store writer refuses a symlink whose target is also a
+        # symlink ("Refusing to write insecure trust store: target is a
+        # symlink"), which aborts the brew step of `darwin-rebuild switch`.
+        # darwin activation resolves the store at ~/.homebrew, interactive brew
+        # at ~/.config/homebrew, so both paths ship the (identical) list.
     done < <(find "$DOTFILES_DIR/$pkg" \( -type f -o -type l \) -print0)
 }
 
