@@ -14,6 +14,23 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STOW_PACKAGES=(zsh git starship atuin ghostty jj aerospace karabiner bin homebrew)
 
+# Homebrew resolves its trust store to "$XDG_CONFIG_HOME/homebrew/trust.json",
+# but the nix-darwin activation runs `brew bundle` under
+# `sudo --set-home env ...`, which drops XDG_CONFIG_HOME, so there brew reads
+# and *writes* ~/.homebrew/trust.json instead. Both paths have to reach the one
+# file this repo tracks, and both have to be writable: `brew bundle` records
+# every `trusted: true` Brewfile entry by rewriting the store.
+#
+# Homebrew's write_trust_store() follows exactly one symlink and refuses if what
+# it lands on is another symlink ("Refusing to write insecure trust store:
+# target is a symlink"). So ~/.homebrew/trust.json cannot be stowed: stow would
+# point it at a symlink inside the repo, a two-hop chain that aborts the brew
+# step of every `darwin-rebuild switch`. Shipping two real copies instead just
+# trades the abort for silent drift, since each context writes only its own
+# copy. One regular file, one direct symlink.
+BREW_TRUST_FILE="$DOTFILES_DIR/homebrew/.config/homebrew/trust.json"
+BREW_TRUST_ALIAS="$HOME/.homebrew/trust.json"
+
 err()  { printf '\e[31m✗\e[0m %s\n' "$*" >&2; }
 info() { printf '\e[34m▸\e[0m %s\n' "$*"; }
 ok()   { printf '\e[32m✓\e[0m %s\n' "$*"; }
@@ -50,14 +67,45 @@ adopt_conflicts() {
         fi
         # -type l too: catch any package file that is itself a symlink (plain
         # -type f skips those, leaving a real conflict at the target un-adopted).
-        # NB: homebrew/trust.json is deliberately a *real* file in both
-        # .homebrew/ and .config/homebrew/, NOT a symlink to its sibling —
-        # Homebrew's trust-store writer refuses a symlink whose target is also a
-        # symlink ("Refusing to write insecure trust store: target is a
-        # symlink"), which aborts the brew step of `darwin-rebuild switch`.
-        # darwin activation resolves the store at ~/.homebrew, interactive brew
-        # at ~/.config/homebrew, so both paths ship the (identical) list.
     done < <(find "$DOTFILES_DIR/$pkg" \( -type f -o -type l \) -print0)
+}
+
+# Reject any trust-store path Homebrew would refuse to write, here and instantly,
+# rather than three minutes into a `work` run. Mirrors trust.rb's write guard.
+assert_trust_store_writable() {
+    local link="$1" target
+    if [[ ! -L "$link" ]]; then
+        [[ -f "$link" ]] || { err "Homebrew trust store missing: $link"; exit 1; }
+        return 0
+    fi
+    target="$(readlink "$link")"
+    [[ "$target" == /* ]] || target="$(dirname "$link")/$target"
+    if [[ -L "$target" ]]; then
+        err "$link resolves to another symlink ($target)."
+        err "Homebrew refuses to write a trust store behind two symlinks."
+        exit 1
+    fi
+    [[ -f "$target" ]] || { err "$link does not resolve to a regular file ($target)"; exit 1; }
+}
+
+link_brew_trust_store() {
+    local dir; dir="$(dirname "$BREW_TRUST_ALIAS")"
+    mkdir -p "$dir"
+    chmod go-w "$dir"   # trust.rb rejects a group/world-writable store directory
+    if [[ -e "$BREW_TRUST_ALIAS" && ! -L "$BREW_TRUST_ALIAS" ]]; then
+        info "Backing up $BREW_TRUST_ALIAS → $BREW_TRUST_ALIAS.backup"
+        mv "$BREW_TRUST_ALIAS" "$BREW_TRUST_ALIAS.backup"
+    fi
+    ln -sfn "$BREW_TRUST_FILE" "$BREW_TRUST_ALIAS"
+    assert_trust_store_writable "$BREW_TRUST_ALIAS"
+    assert_trust_store_writable "$HOME/.config/homebrew/trust.json"
+    ok "Homebrew trust store: $BREW_TRUST_ALIAS → $BREW_TRUST_FILE"
+}
+
+unlink_brew_trust_store() {
+    [[ -L "$BREW_TRUST_ALIAS" && "$BREW_TRUST_ALIAS" -ef "$BREW_TRUST_FILE" ]] || return 0
+    rm "$BREW_TRUST_ALIAS"
+    ok "Unlinked $BREW_TRUST_ALIAS"
 }
 
 action="${1:-link}"
@@ -71,16 +119,19 @@ case "$action" in
         done
         stow "${stow_flags[@]}" --restow "${STOW_PACKAGES[@]}"
         ok "Stowed: ${STOW_PACKAGES[*]}"
+        link_brew_trust_store
         ;;
     --restow|restow)
         require_stow
         stow "${stow_flags[@]}" --restow "${STOW_PACKAGES[@]}"
         ok "Restowed: ${STOW_PACKAGES[*]}"
+        link_brew_trust_store
         ;;
     --delete|delete|uninstall)
         require_stow
         stow "${stow_flags[@]}" --delete "${STOW_PACKAGES[@]}"
         ok "Unstowed: ${STOW_PACKAGES[*]}"
+        unlink_brew_trust_store
         ;;
     *)
         err "Unknown action: $action"
