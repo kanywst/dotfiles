@@ -33,6 +33,15 @@ export HOMEBREW_NO_ANALYTICS=1
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_ENV_HINTS=1
 
+# Homebrew 6.0 turns on HOMEBREW_REQUIRE_TAP_TRUST by default, but its build
+# sandbox (`deny_read_home`) does not allow-read the trust store at
+# `$HOMEBREW_USER_CONFIG_HOME/trust.json`. So the in-sandbox `build.rb` re-runs
+# the trust check, can't read trust.json, and refuses to build any formula from
+# a third-party tap ("Refusing to load ... from untrusted tap"), e.g. opencode.
+# Until upstream allow-reads the trust store, turn the requirement off so builds
+# from trusted taps work. (The flag is deprecated and slated for removal anyway.)
+export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+
 # Auto-dedupe PATH
 typeset -U path PATH
 
