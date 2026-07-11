@@ -8,7 +8,7 @@
     "oven-sh/bun/bun"
   ],
   "trustedcasks": [
-    "kanywst/y509/y509",
+    "kanywst/tap/y509",
     "nikitabobko/tap/aerospace"
   ]
 }
