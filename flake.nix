@@ -119,8 +119,7 @@
             taps = [
               "anomalyco/tap"        # opencode
               "charmbracelet/tap"    # crush, vhs
-              "kanywst/tap"          # approval-hub
-              "kanywst/y509"         # y509 cask
+              "kanywst/tap"          # approval-hub, y509
               "nikitabobko/tap"      # aerospace cask
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
@@ -266,7 +265,7 @@
               "ollama-app"
               "warp"
               # third-party taps
-              "kanywst/y509/y509"
+              "kanywst/tap/y509"
               "nikitabobko/tap/aerospace"
             ];
             # App Store apps (needs `mas`, declared above). ID from `mas list`.
