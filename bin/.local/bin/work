@@ -49,6 +49,12 @@ B=$'\e[1m'; X=$'\e[0m'
 have() { command -v "$1" >/dev/null 2>&1; }
 HAS_GUM=false; have gum && HAS_GUM=true
 
+# Homebrew's coreutils links a GNU tool unprefixed when macOS has no command of
+# that name, so `timeout` is there (macOS ships none) as well as `gtimeout`.
+# Accept either, so the watchdog doesn't hinge on that linking policy.
+TIMEOUT_BIN=
+for c in timeout gtimeout; do have "$c" && { TIMEOUT_BIN=$c; break; }; done
+
 # Spinner output mode: hidden-until-failure by default, live when verbose.
 SPIN_FLAGS=(--show-error)
 
@@ -160,8 +166,8 @@ step() {
     # but the root child has to be reaped by hand.
     local -a runner=(bash -c "set -uo pipefail; $fn")
     local wrapped=false
-    if ((WORK_TIMEOUT > 0)) && have timeout; then
-        runner=(timeout "$WORK_TIMEOUT" "${runner[@]}")
+    if ((WORK_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
+        runner=("$TIMEOUT_BIN" "$WORK_TIMEOUT" "${runner[@]}")
         wrapped=true
     fi
 
@@ -250,8 +256,8 @@ start=$SECONDS
 
 # Say so out loud rather than degrading quietly: a run with no watchdog is
 # exactly the run that can burn an hour behind the spinner.
-if ((WORK_TIMEOUT > 0)) && ! have timeout; then
-    printf '%s  ⚠️  no timeout(1) from coreutils — steps run unbounded this time.%s\n' "$R" "$X"
+if ((WORK_TIMEOUT > 0)) && [[ -z "$TIMEOUT_BIN" ]]; then
+    printf '%s  ⚠️  no timeout(1)/gtimeout from coreutils — steps run unbounded this time.%s\n' "$R" "$X"
 fi
 
 printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$X"
