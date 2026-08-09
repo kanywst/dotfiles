@@ -413,7 +413,7 @@ behind a gum spinner per step and only surfaces on failure.
 Sudo is requested once up front (for the nix-darwin switch). `cargo`/`go`
 binaries are intentionally left alone — no clean bulk-updater is installed.
 
-Each step is capped by a watchdog (`WORK_TIMEOUT`, default `1800` seconds, `0` disables). The spinner hides a step's output, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run.
+Each step is capped by a watchdog (`WORK_TIMEOUT`, default `1800` seconds, `0` disables). The spinner hides a step's output, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 
 ### Key bindings
 

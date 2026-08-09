@@ -17,7 +17,9 @@
 # Every step is capped by a watchdog (WORK_TIMEOUT, default 30m). `gum spin`
 # hides a step's output, so a stalled download or an invisible prompt burns the
 # whole session with nothing on screen; the cap turns that into a failed step and
-# lets the rest of the run finish. Set WORK_TIMEOUT=0 to disable it.
+# lets the rest of the run finish. Set WORK_TIMEOUT=0 to disable it. The cap needs
+# timeout(1) from coreutils; without it the steps run unbounded and the run says
+# so up front rather than pretending it's protected.
 #
 # Usage:
 #   work               # update everything (pretty)
@@ -26,6 +28,7 @@
 #
 # Env:
 #   WORK_TIMEOUT=<sec> # per-step watchdog (default 1800, 0 disables)
+#   DARWIN_MAS=1       # let the nix-darwin switch install the masApps (fresh Mac)
 
 set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
 
@@ -67,10 +70,13 @@ do_nix() {
     # prompt. The credential was already cached by the up-front `sudo -v`, so
     # -n succeeds here; if it has expired, -n fails fast with a visible error
     # instead of hanging on an invisible prompt.
+    # DARWIN_MAS is read by the flake through getEnv just like USER, so it has to
+    # survive sudo too - otherwise `DARWIN_MAS=1 work` still skips the mas apps.
     if command -v darwin-rebuild >/dev/null 2>&1; then
-        sudo -n env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
+        sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
+            darwin-rebuild switch --impure --flake ".#$who"
     else
-        sudo -n env "PATH=$path" "USER=$who" \
+        sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
             nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
     fi
 }
@@ -143,12 +149,20 @@ step() {
         SKIPPED+=("$label"); return
     fi
 
-    # `timeout --foreground` keeps the child on the controlling terminal, so an
-    # interactive step still works when run without gum. It ships with coreutils,
-    # which is only ever a transitive dep here, so degrade gracefully if absent.
+    # Deliberately NOT --foreground: that flag skips putting the command in its
+    # own process group, so on expiry only the direct `bash -c` is signalled and
+    # the actual worker (darwin-rebuild, brew bundle, mas install) is orphaned and
+    # keeps running. Verified: with --foreground a grandchild survives the kill,
+    # without it the whole group dies. The steps here never read the TTY (sudo is
+    # pre-warmed, HOMEBREW_NO_ASK=1), so the group has nothing to lose by it.
+    # Caveat: `do_nix` does its work through `sudo`, and a user-owned timeout
+    # can't signal a root process - that step still ends at 124 and frees the run,
+    # but the root child has to be reaped by hand.
     local -a runner=(bash -c "set -uo pipefail; $fn")
+    local wrapped=false
     if ((WORK_TIMEOUT > 0)) && have timeout; then
-        runner=(timeout --foreground "$WORK_TIMEOUT" "${runner[@]}")
+        runner=(timeout "$WORK_TIMEOUT" "${runner[@]}")
+        wrapped=true
     fi
 
     local t0=$SECONDS rc
@@ -167,7 +181,9 @@ step() {
     if ((rc == 0)); then
         printf '%s  ✓%s %s %s %s%s(%ds)%s\n' "$G" "$X" "$emoji" "$label" "$D" "$D" "$dt" "$X"
         DONE+=("$label")
-    elif ((rc == 124)); then
+    elif $wrapped && ((rc == 124)); then
+        # 124 only means "watchdog fired" when the watchdog was actually in play;
+        # unwrapped it's just the step's own exit status.
         printf '%s  ✗ %s %s timed out%s %s(%ds — WORK_TIMEOUT=%ss)%s\n' \
             "$R" "$emoji" "$label" "$X" "$D" "$dt" "$WORK_TIMEOUT" "$X"
         FAILED+=("$label")
@@ -231,6 +247,12 @@ done
 
 banner
 start=$SECONDS
+
+# Say so out loud rather than degrading quietly: a run with no watchdog is
+# exactly the run that can burn an hour behind the spinner.
+if ((WORK_TIMEOUT > 0)) && ! have timeout; then
+    printf '%s  ⚠️  no timeout(1) from coreutils — steps run unbounded this time.%s\n' "$R" "$X"
+fi
 
 printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$X"
 # Prompt once, up front, instead of mid-run. If this fails (wrong password,

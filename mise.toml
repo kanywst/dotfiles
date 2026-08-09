@@ -33,6 +33,8 @@ description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
 # - PATH propagated through sudo because nix lives in the user's nix profile.
 # - USER + --impure: flake.nix reads the name from getEnv "USER", and sudo
 #   resets USER to root; without these the `.#$who` attr doesn't exist.
+# - DARWIN_MAS is read by the flake the same way, so it has to survive sudo too,
+#   or `DARWIN_MAS=1 mise run darwin-switch` would silently keep skipping mas.
 # - HOME deliberately NOT propagated, else nix writes root-owned ~/.cache/nix.
 # - `$(whoami)` is captured BEFORE sudo so it resolves to the calling user;
 #   the flake's `username` is the one place that needs editing on a fork.
@@ -41,12 +43,13 @@ description = "Apply nix-darwin flake (macOS defaults + brew bundle)"
 run = '''
 path=$PATH; who=$(whoami)
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo env "PATH=$path" "USER=$who" darwin-rebuild switch --impure --flake ".#$who"
+    sudo env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
+        darwin-rebuild switch --impure --flake ".#$who"
 else
     echo "darwin-rebuild not on PATH — running first-time bootstrap via nix run"
     # Explicit GitHub URL avoids depending on the `nix-darwin` registry alias,
     # which isn't guaranteed on a fresh machine without a flake registry fetch.
-    sudo env "PATH=$path" "USER=$who" \
+    sudo env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
         nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
 fi
 '''
