@@ -14,14 +14,26 @@
 # unless the step fails (--show-error) or --verbose is passed (--show-output).
 # Without gum it degrades to plain, still-readable output.
 #
+# Every step is capped by a watchdog (WORK_TIMEOUT, default 30m). `gum spin`
+# hides a step's output, so a stalled download or an invisible prompt burns the
+# whole session with nothing on screen; the cap turns that into a failed step and
+# lets the rest of the run finish. Set WORK_TIMEOUT=0 to disable it.
+#
 # Usage:
 #   work               # update everything (pretty)
 #   work -v|--verbose  # stream every command's output live
 #   work -h|--help     # show this help
+#
+# Env:
+#   WORK_TIMEOUT=<sec> # per-step watchdog (default 1800, 0 disables)
 
 set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
 
 export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+
+# Generous on purpose: a real nixpkgs-unstable rebuild can legitimately run for
+# many minutes, so this must only fire on a genuine hang, never on slow work.
+WORK_TIMEOUT="${WORK_TIMEOUT:-1800}"
 
 # ---- palette (256-color; Ghostty is truecolor) ---------------------------
 P=$'\e[38;5;212m'   # pink
@@ -131,22 +143,34 @@ step() {
         SKIPPED+=("$label"); return
     fi
 
+    # `timeout --foreground` keeps the child on the controlling terminal, so an
+    # interactive step still works when run without gum. It ships with coreutils,
+    # which is only ever a transitive dep here, so degrade gracefully if absent.
+    local -a runner=(bash -c "set -uo pipefail; $fn")
+    if ((WORK_TIMEOUT > 0)) && have timeout; then
+        runner=(timeout --foreground "$WORK_TIMEOUT" "${runner[@]}")
+    fi
+
     local t0=$SECONDS rc
     if $HAS_GUM; then
         gum spin --spinner "$spin" \
             --spinner.foreground 212 --title.foreground 252 \
             --title "  $tag  $emoji  ${label}…" \
-            "${SPIN_FLAGS[@]}" -- bash -c "set -uo pipefail; $fn"
+            "${SPIN_FLAGS[@]}" -- "${runner[@]}"
         rc=$?
     else
         printf '%s▸ %s %s %s…%s\n' "$C" "$tag" "$emoji" "$label" "$X"
-        bash -c "set -uo pipefail; $fn"; rc=$?
+        "${runner[@]}"; rc=$?
     fi
     local dt=$((SECONDS - t0))
 
     if ((rc == 0)); then
         printf '%s  ✓%s %s %s %s%s(%ds)%s\n' "$G" "$X" "$emoji" "$label" "$D" "$D" "$dt" "$X"
         DONE+=("$label")
+    elif ((rc == 124)); then
+        printf '%s  ✗ %s %s timed out%s %s(%ds — WORK_TIMEOUT=%ss)%s\n' \
+            "$R" "$emoji" "$label" "$X" "$D" "$dt" "$WORK_TIMEOUT" "$X"
+        FAILED+=("$label")
     else
         printf '%s  ✗ %s %s failed%s %s(%ds — output above)%s\n' "$R" "$emoji" "$label" "$X" "$D" "$dt" "$X"
         FAILED+=("$label")
