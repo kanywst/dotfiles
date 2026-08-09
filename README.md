@@ -224,6 +224,12 @@ What it does:
 - `brew install` against the `homebrew.brews / casks / masApps` lists. These mirror `brew leaves` / `brew list --cask` / `mas list` on the live machine, so a fresh Mac reconciles to the same software set (`cleanup = "none"`, so anything off-list is left alone)
 - `~/.zshrc` / `~/.config/starship.toml` are left untouched (stow's territory)
 
+The `mas` section is skipped by default (`HOMEBREW_BUNDLE_MAS_SKIP`, set from the `masApps` ids in `flake.nix`). `brew bundle` asks `mas list` whether an App Store app is installed, and mas 7 answers from the Spotlight index; when `/Applications` isn't indexed every entry looks missing and each switch re-runs `mas install` on all of them, re-downloading apps and failing the activation. On a fresh Mac, where the apps really are absent, run the switch once with `DARWIN_MAS=1` to let mas install them:
+
+```bash
+DARWIN_MAS=1 darwin-rebuild switch --impure --flake ~/dotfiles#"$(whoami)"
+```
+
 To uninstall:
 
 ```bash
