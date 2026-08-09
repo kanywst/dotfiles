@@ -175,6 +175,7 @@
               "carapace"
               "cmake"
               "codespell"
+              "coreutils"     # `timeout`, which bin/work's step watchdog needs
               "cosign"
               "d2"
               "diffoscope"
