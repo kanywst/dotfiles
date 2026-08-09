@@ -26,6 +26,30 @@
     # to "user" - that keeps `nix flake check` green in CI. Real switches use
     # `--impure` + `#"$(whoami)"` to pick up the actual user.
     username = let u = builtins.getEnv "USER"; in if u == "" then "user" else u;
+
+    # Mac App Store apps, by `mas list` id.
+    masApps = {
+      "Keynote" = 409183694;
+      "LINE" = 539883307;
+    };
+
+    # `brew bundle` decides whether a `mas` entry is already installed by parsing
+    # `mas list`, and mas 7 answers that from the Spotlight index. On a machine
+    # where /Applications isn't indexed, `mas list` returns nothing, EVERY masApps
+    # entry looks missing, and each activation re-runs `mas install` on all of
+    # them: on 2026-08-09 that re-downloaded LINE and hard-failed on Keynote, so
+    # `darwin-rebuild switch` exited non-zero after 23 minutes - every run.
+    # The apps are install-once, so skip the mas section by default and keep the
+    # list above as the declaration. On a fresh Mac, where they really are
+    # missing, run the switch with DARWIN_MAS=1 to let mas install them.
+    masSkip =
+      if builtins.getEnv "DARWIN_MAS" == "1" then
+        { }
+      else
+        {
+          HOMEBREW_BUNDLE_MAS_SKIP =
+            builtins.concatStringsSep " " (map toString (builtins.attrValues masApps));
+        };
   in {
     homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
       pkgs = nixpkgs.legacyPackages.${system};
@@ -114,6 +138,18 @@
               autoUpdate = false;
               upgrade = false;
               cleanup = "none";
+              # Activation runs `brew bundle` through
+              # `sudo --preserve-env=PATH --user=... --set-home env`, so NOTHING
+              # from the interactive shell (zsh/conf.d/00-env.zsh) reaches it.
+              # Every HOMEBREW_* knob brew needs here has to be re-declared.
+              extraEnv = {
+                HOMEBREW_NO_ANALYTICS = "1";
+                HOMEBREW_NO_ENV_HINTS = "1";
+                # Mirrors 00-env.zsh: Homebrew 6.0's build sandbox can't read the
+                # tap-trust store, so a source build from a third-party tap dies
+                # in-sandbox even though nix-darwin marks the entry `trusted: true`.
+                HOMEBREW_NO_REQUIRE_TAP_TRUST = "1";
+              } // masSkip;
             };
             # External taps referenced by the brews / casks below.
             taps = [
@@ -268,11 +304,9 @@
               "kanywst/tap/y509"
               "nikitabobko/tap/aerospace"
             ];
-            # App Store apps (needs `mas`, declared above). ID from `mas list`.
-            masApps = {
-              "Keynote" = 409183694;
-              "LINE" = 539883307;
-            };
+            # App Store apps (needs `mas`, declared above). Declared in the `let`
+            # above so `masSkip` can derive the skip list from the same ids.
+            inherit masApps;
           };
 
           system.stateVersion = 6;

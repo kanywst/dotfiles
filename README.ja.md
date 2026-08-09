@@ -224,6 +224,12 @@ darwin-rebuild switch --flake ~/dotfiles#"$(whoami)"
 - `homebrew.brews / casks / masApps` のリストに対して `brew install`。これらは実機の `brew leaves` / `brew list --cask` / `mas list` をミラーしているので、新しい Mac でも同じソフト構成に収束する (`cleanup = "none"` なのでリスト外は消さない)
 - `~/.zshrc` / `~/.config/starship.toml` は触らない (stow の管轄)
 
+`mas` セクションはデフォルトでスキップされる (`HOMEBREW_BUNDLE_MAS_SKIP` に `flake.nix` の `masApps` の id を流し込んでいる)。`brew bundle` は App Store アプリが入っているかを `mas list` に聞き、mas 7 はそれを Spotlight インデックスから答える。`/Applications` がインデックスされていないマシンでは全エントリが「未インストール」に見え、switch のたびに `mas install` が走ってアプリを再ダウンロードし、activation が失敗する。新しい Mac のように本当に入っていない場合だけ、`DARWIN_MAS=1` を付けて一度 switch する:
+
+```bash
+DARWIN_MAS=1 darwin-rebuild switch --impure --flake ~/dotfiles#"$(whoami)"
+```
+
 やめる時:
 
 ```bash
