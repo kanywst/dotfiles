@@ -8,7 +8,9 @@
 # (rustup / mise / npm-g / krew / gh extensions), so those are bumped here too.
 #
 # Runs every step unattended — no per-step confirmation. The only interactive
-# point is sudo for darwin-rebuild, which is asked for up front.
+# point is sudo, which is asked for up front and then kept warm for the whole
+# run (darwin-rebuild needs it immediately; a Pkg cask upgrade needs it ~25
+# minutes in, long after the 5-minute sudo timestamp would have lapsed).
 #
 # UI: when `gum` is present each step gets a spinner; command output is hidden
 # unless the step fails (--show-error) or --verbose is passed (--show-output).
@@ -95,6 +97,11 @@ do_nix() {
 # and prompts "proceed? [y/n]"). That prompt runs inside `gum spin`, which hides
 # stdout/stderr, so it would hang invisibly forever (same trap as the sudo one).
 # This is an unattended run, so disable ask-mode and just proceed.
+#
+# `brew upgrade --cask` is the step that needs root mid-run: a Pkg-artifact cask
+# (multipass) shells out to `sudo launchctl`/`pkgutil` to tear the old service
+# down. That's why the up-front credential has to be kept alive (see the
+# keep-alive below the `sudo -v`), not just warmed once.
 do_brew() {
     export HOMEBREW_NO_ASK=1   # runs in its own bash -c subshell; scope is this step.
     # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
@@ -269,6 +276,30 @@ printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$
 if ! sudo -v; then
     SUDO_OK=false
     printf '%s  ⚠️  sudo not authorized — skipping nix-darwin, running the rest.%s\n' "$R" "$X"
+fi
+
+# Warming it once is not enough: macOS's sudo timestamp lapses after ~5 minutes,
+# and the steps that need root land much later than that — `brew upgrade --cask`
+# reached multipass (a Pkg cask, so `sudo launchctl`/`pkgutil`) ~25 minutes in.
+# sudo writes that prompt straight to /dev/tty, which the gum spinner is busy
+# repainting, so it is invisible in practice and the run just sits on it until
+# the watchdog kills the step (the "homebrew timed out — 1800s" run). Refreshing
+# in the background keeps every later sudo non-interactive.
+#
+# `sudo -n -v` so the refresher itself can never become the thing that prompts:
+# if the grant is revoked mid-run it exits, and the step's own sudo then fails
+# loudly rather than blocking. The `kill -0 $$` makes it self-terminate within a
+# minute even if the trap below never runs (SIGKILL, crash).
+cleanup_sudo() { [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; }
+SUDO_KEEPALIVE_PID=
+if [[ "$SUDO_OK" == true ]]; then
+    while sudo -n -v 2>/dev/null; do
+        sleep 60
+        kill -0 "$$" 2>/dev/null || exit 0
+    done &
+    SUDO_KEEPALIVE_PID=$!
+    trap cleanup_sudo EXIT
+    trap 'cleanup_sudo; exit 130' INT TERM
 fi
 echo
 
