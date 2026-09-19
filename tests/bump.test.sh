@@ -20,7 +20,10 @@
 set -uo pipefail
 
 ROOT="$(cd -P "$(dirname "$0")/.." && pwd)"
-BUMP="$ROOT/bin/.local/bin/bump"
+# Overridable so the suite can be pointed at an older revision to confirm it
+# actually catches the regressions it claims to (see the mutation check in the
+# commit that added it): BUMP_UNDER_TEST=<path> tests/bump.test.sh
+BUMP="${BUMP_UNDER_TEST:-$ROOT/bin/.local/bin/bump}"
 SHELL_UNDER_TEST="${BUMP_TEST_SHELL:-bash}"
 
 PASS=0; FAIL=0
@@ -353,6 +356,68 @@ PY
         bad "control: expected leftover bytes without a drain, got '${left_without:-}'"
     fi
     assert_eq "drain_tty empties the terminal's replies" "${left_with:-x}" "0"
+    # And the same thing end to end, through gum itself: a pty that answers the
+    # DECRQM probes the way a real terminal does, with bump driving real
+    # `gum spin` calls. This is the exact reported failure, so it is worth the
+    # cost of being the one test that needs gum installed.
+    if command -v gum >/dev/null 2>&1; then
+        cat >"$TMP/responder.py" <<'RESP'
+import os, pty, select, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash"] + sys.argv[1:])
+    os._exit(1)
+out = b""
+answered = 0
+while True:
+    try:
+        r, _, _ = select.select([fd], [], [], 30)
+        if not r:
+            break
+        d = os.read(fd, 65536)
+        if not d:
+            break
+        out += d
+        for probe, reply in ((b"\x1b[?2026$p", b"\x1b[?2026;2$y"),
+                             (b"\x1b[?2027$p", b"\x1b[?2027;2$y")):
+            for _ in range(d.count(probe)):
+                os.write(fd, reply)
+                answered += 1
+    except OSError:
+        break
+os.waitpid(pid, 0)
+sys.stdout.write(out.decode(errors="replace"))
+sys.stdout.write("\nPROBES=%d\n" % answered)
+RESP
+        cat >"$TMP/gumrun.sh" <<GUMRUN
+export PATH="\$STUB_PATH"
+export HOME="$TMP" XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
+export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=20
+"$BUMP" --only brew,brew-cask
+saved=\$(stty -g </dev/tty 2>/dev/null)
+stty -icanon min 0 time 0 </dev/tty 2>/dev/null
+n=\$(dd bs=4096 count=1 </dev/tty 2>/dev/null | wc -c | tr -d ' ')
+stty "\$saved" </dev/tty 2>/dev/null
+printf '\nTTYLEFT=%d\n' "\$n"
+GUMRUN
+        reset_stubs
+        gum_out=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):/usr/bin:/bin" \
+            python3 "$TMP/responder.py" "$TMP/gumrun.sh" 2>/dev/null | tr -d '\r')
+        gum_left=$(printf '%s' "$gum_out" | sed -n 's/.*TTYLEFT=\([0-9]*\).*/\1/p' | tail -1)
+        gum_probes=$(printf '%s' "$gum_out" | sed -n 's/.*PROBES=\([0-9]*\).*/\1/p' | tail -1)
+        # Without this, the check below passes for free against any bump that
+        # exits before it reaches a spinner — which is what happened the first
+        # time this was pointed at the pre-fix revision, where `--only` does not
+        # exist yet and the run died on an unknown argument.
+        if [[ "${gum_probes:-0}" -gt 0 ]]; then
+            ok "the gum run really did probe the terminal ($gum_probes replies sent)"
+        else
+            bad "the gum run never reached a spinner, so the next check is vacuous" "$gum_out"
+        fi
+        assert_eq "a real gum-driven run leaves the tty queue empty" "${gum_left:-x}" "0"
+    else
+        printf '%s  · skipped: end-to-end probe test needs gum%s\n' "$dim" "$off"
+    fi
 else
     printf '%s  · skipped: pty test needs python3%s\n' "$dim" "$off"
 fi
