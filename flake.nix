@@ -179,6 +179,11 @@
               "cosign"
               "d2"
               "diffoscope"
+              # Structural (tree-sitter) diff. Complements git-delta rather than
+              # replacing it: delta highlights syntax in a line diff, difftastic
+              # ignores reformatting/reindentation. Reading only — it can't emit
+              # an applyable patch, so `git diff` stays delta's.
+              "difftastic"
               "direnv"
               "dust"
               "envoy"
@@ -210,8 +215,14 @@
               "imagemagick"
               "istioctl"
               "jj"
+              # lazygit for jj. The obvious alternative, lazyjj, is effectively
+              # stopped (last release 2025-09-10, last commit 2026-03-02) while
+              # jjui ships monthly. Needs jj >= 0.37.
+              "jjui"
+              # Replaces jqp, whose default branch last moved 2025-09-28. jnv
+              # embeds jaq so it needs no external jq.
+              "jnv"
               "jq"
-              "jqp"
               "just"
               "k9s"
               "kind"
@@ -272,7 +283,6 @@
               "vegeta"
               "vexctl"
               "wget"
-              "wrk"
               "xh"
               "yamllint"
               "yazi"
