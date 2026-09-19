@@ -71,7 +71,7 @@ adopt_conflicts() {
 }
 
 # Reject any trust-store path Homebrew would refuse to write, here and instantly,
-# rather than three minutes into a `work` run. Mirrors trust.rb's write guard.
+# rather than three minutes into a `bump` run. Mirrors trust.rb's write guard.
 assert_trust_store_writable() {
     local link="$1" target
     if [[ ! -L "$link" ]]; then

@@ -42,7 +42,7 @@ exec zsh -l
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
 - aichat: シェル上のマルチモデル LLM CLI
-- `work`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh)、gum スピナー付き
+- `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - AeroSpace: i3 ライクなタイル型 WM (SIP 無効化不要)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
@@ -85,7 +85,7 @@ exec zsh -l
 | Tile WM | AeroSpace | yabai (SIP 無効が必要) / Magnet |
 | Keymap | Karabiner-Elements | macOS システム設定 |
 | App Store | mas | 手動の GUI インストール |
-| Updater | `work` (bin/) | 場当たり的な `brew upgrade` / `nix flake update` |
+| Updater | `bump` (bin/) | 場当たり的な `brew upgrade` / `nix flake update` |
 | System | nix-darwin | 手動の `defaults write` |
 | User env | home-manager (input 結線済み) | stow のみ |
 | Linker | GNU stow | 手書きの `ln -s` スクリプト |
@@ -240,7 +240,7 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 
 flake で宣言できない管理系 (mise runtime、rustup toolchain、krew プラグイン、
 gh 拡張) がある。`bootstrap` がそれらを冪等に導入する (再実行は不足分だけ埋める)。
-更新はあとで `work` が面倒を見る。
+更新はあとで `bump` が面倒を見る。
 
 ```bash
 mise run bootstrap   # または: bootstrap
@@ -398,7 +398,7 @@ cd <repo> && jj git init --colocate
 
 ### 更新
 
-`work` (`bin` stow パッケージ、`~/.local/bin/work` にリンク) で全部まとめて上げる。
+`bump` (`bin` stow パッケージ、`~/.local/bin/bump` にリンク) で全部まとめて上げる。
 このマシンは nix-darwin の宣言的構成なので、システムの正規経路は `brew upgrade`
 単体ではなく `nix flake update` + `darwin-rebuild switch`。nix が管理しないユーザー
 領域のマネージャもこれに合わせて更新する。各ステップの出力は gum スピナーの裏に隠れ、
@@ -406,14 +406,14 @@ cd <repo> && jj git init --colocate
 
 | Cmd | 動作 |
 | --- | --- |
-| `work` | 全部更新: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
-| `work -v` | 同上、各コマンドの出力をライブ表示 |
-| `work -h` | ヘルプ |
+| `bump` | 全部更新: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
+| `bump -v` | 同上、各コマンドの出力をライブ表示 |
+| `bump -h` | ヘルプ |
 
 sudo は最初に一度だけ要求 (nix-darwin switch 用)。`cargo`/`go` バイナリは一括更新
 手段が無いので意図的に対象外。
 
-各ステップには watchdog が付く (`WORK_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。spinner がステップの出力を隠すので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
+各ステップには watchdog が付く (`BUMP_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。spinner がステップの出力を隠すので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
 
 ### キーバインド
 

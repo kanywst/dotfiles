@@ -42,7 +42,7 @@ exec zsh -l
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
 - aichat: multi-model LLM CLI in the shell
-- `work`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh) with gum spinners
+- `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - AeroSpace: i3-like tiling WM (no SIP disable)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
@@ -85,7 +85,7 @@ exec zsh -l
 | Tile WM | AeroSpace | yabai (needs SIP off) / Magnet |
 | Keymap | Karabiner-Elements | macOS System Settings |
 | App Store | mas | manual GUI installs |
-| Updater | `work` (bin/) | ad-hoc `brew upgrade` / `nix flake update` runs |
+| Updater | `bump` (bin/) | ad-hoc `brew upgrade` / `nix flake update` runs |
 | System | nix-darwin | manual `defaults write` |
 | User env | home-manager (input wired) | stow only |
 | Linker | GNU stow | hand-rolled `ln -s` scripts |
@@ -240,7 +240,7 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 
 Some managers can't be declared in the flake — mise runtimes, rustup
 toolchains, krew plugins, gh extensions. `bootstrap` installs them
-idempotently (re-running only fills gaps); `work` keeps them updated later.
+idempotently (re-running only fills gaps); `bump` keeps them updated later.
 
 ```bash
 mise run bootstrap   # or: bootstrap
@@ -398,7 +398,7 @@ cd <repo> && jj git init --colocate
 
 ### Updating
 
-`work` (in the `bin` stow package, linked to `~/.local/bin/work`) bumps
+`bump` (in the `bin` stow package, linked to `~/.local/bin/bump`) bumps
 everything in one run. This box is nix-darwin declarative, so the system path is
 `nix flake update` + `darwin-rebuild switch` — not a bare `brew upgrade`; the
 per-user managers nix doesn't own are bumped alongside it. Output is hidden
@@ -406,14 +406,14 @@ behind a gum spinner per step and only surfaces on failure.
 
 | Cmd | Action |
 | --- | --- |
-| `work` | update everything: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
-| `work -v` | same, but stream every command's output live |
-| `work -h` | help |
+| `bump` | update everything: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
+| `bump -v` | same, but stream every command's output live |
+| `bump -h` | help |
 
 Sudo is requested once up front (for the nix-darwin switch). `cargo`/`go`
 binaries are intentionally left alone — no clean bulk-updater is installed.
 
-Each step is capped by a watchdog (`WORK_TIMEOUT`, default `1800` seconds, `0` disables). The spinner hides a step's output, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
+Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). The spinner hides a step's output, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its bump through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 
 ### Key bindings
 

@@ -11,7 +11,7 @@ description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
 run = [
     "zsh -n zsh/.zshrc",
     "for f in zsh/conf.d/*.zsh; do [ -f \"$f\" ] || continue; echo == $f; zsh -n \"$f\" || exit 1; done",
-    "shellcheck -e SC1090,SC1091 install.sh 'bin/.local/bin/work'",
+    "shellcheck -e SC1090,SC1091 install.sh 'bin/.local/bin/bump'",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
 ]
@@ -60,7 +60,7 @@ run = "nix flake check --no-build"
 
 [tasks.update]
 description = "Bump flake inputs and brew bundle"
-# Match work's do_brew: casks and cleanup too.
+# Match bump's do_brew: casks and cleanup too.
 run = [
     "nix flake update",
     "brew update && brew upgrade && brew upgrade --cask && brew cleanup",
