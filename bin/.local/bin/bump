@@ -5,31 +5,45 @@
 # HOMEBREW_NO_AUTO_UPDATE=1, "nix-darwin owns reconciliation"). So the canonical
 # system update is `nix flake update` + `darwin-rebuild switch`, NOT a bare
 # `brew upgrade`. nix doesn't manage the per-user tool managers though
-# (rustup / mise / npm-g / krew / gh extensions), so those are bumped here too.
+# (rustup / mise / npm-g / krew / gh extensions / cargo / go), so those are
+# bumped here too.
 #
 # Runs every step unattended — no per-step confirmation. The only interactive
 # point is sudo, which is asked for up front and then kept warm for the whole
 # run (darwin-rebuild needs it immediately; a Pkg cask upgrade needs it ~25
-# minutes in, long after the 5-minute sudo timestamp would have lapsed).
+# minutes in, long after the 5-minute sudo timestamp would have lapsed). sudo is
+# only requested when a selected step actually needs it, so e.g. `bump --only
+# npm` never prompts.
 #
-# UI: when `gum` is present each step gets a spinner; command output is hidden
-# unless the step fails (--show-error) or --verbose is passed (--show-output).
-# Without gum it degrades to plain, still-readable output.
+# Steps run in two phases. The serial phase (nix flake → nix-darwin → brew →
+# brew casks) is ordered and root-hungry. Everything after it is independent, so
+# it runs concurrently and each result prints the moment that tool finishes.
 #
-# Every step is capped by a watchdog (BUMP_TIMEOUT, default 30m). `gum spin`
-# hides a step's output, so a stalled download or an invisible prompt burns the
+# UI: when `gum` is present each serial step gets a spinner. Every step's output
+# is captured to a per-run log directory instead of the screen; a failing step
+# has its log tail printed inline, and the run prints the log directory at the
+# end. `--verbose` skips the spinners, streams output live, and forces every
+# step serial so concurrent output can't interleave into noise.
+#
+# Every step is capped by a watchdog (BUMP_TIMEOUT, default 30m). Output is
+# hidden by default, so a stalled download or an invisible prompt would burn the
 # whole session with nothing on screen; the cap turns that into a failed step and
 # lets the rest of the run finish. Set BUMP_TIMEOUT=0 to disable it. The cap needs
 # timeout(1) from coreutils; without it the steps run unbounded and the run says
 # so up front rather than pretending it's protected.
 #
 # Usage:
-#   bump               # update everything (pretty)
-#   bump -v|--verbose  # stream every command's output live
-#   bump -h|--help     # show this help
+#   bump                    # update everything (pretty)
+#   bump -n|--dry-run       # show the plan and what would be skipped, run nothing
+#   bump --only nix,brew    # run only these steps (comma-separated)
+#   bump --skip atuin,npm   # run everything except these
+#   bump -l|--list          # list the step names
+#   bump -v|--verbose       # stream every command's output live, serially
+#   bump -h|--help          # show this help
 #
 # Env:
 #   BUMP_TIMEOUT=<sec> # per-step watchdog (default 1800, 0 disables)
+#   DOTFILES_DIR=<dir> # dotfiles checkout the nix steps operate on (~/dotfiles)
 #   DARWIN_MAS=1       # let the nix-darwin switch install the masApps (fresh Mac)
 
 set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
@@ -39,6 +53,9 @@ export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 # Generous on purpose: a real nixpkgs-unstable rebuild can legitimately run for
 # many minutes, so this must only fire on a genuine hang, never on slow work.
 BUMP_TIMEOUT="${BUMP_TIMEOUT:-1800}"
+
+LOG_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/bump"
+LOG_DIR="$LOG_ROOT/$(date +%Y%m%d-%H%M%S)"
 
 # ---- palette (256-color; Ghostty is truecolor) ---------------------------
 P=$'\e[38;5;212m'   # pink
@@ -57,24 +74,45 @@ HAS_GUM=false; have gum && HAS_GUM=true
 TIMEOUT_BIN=
 for c in timeout gtimeout; do have "$c" && { TIMEOUT_BIN=$c; break; }; done
 
-# Spinner output mode: hidden-until-failure by default, live when verbose.
-SPIN_FLAGS=(--show-error)
+# ---- the step table ------------------------------------------------------
+# name|emoji|label|spinner|phase|sudo
+#   phase  serial = order matters and/or it needs root; par = independent.
+#   sudo   yes    = skipped outright when the up-front `sudo -v` didn't take.
+# The list is the single source of truth: step count, --only/--skip names and
+# run order all derive from it, so adding a tool here is the whole change.
+STEPS=(
+    "flake|❄️|nix flake inputs|globe|serial|no"
+    "darwin|🍎|nix-darwin switch|globe|serial|yes"
+    "brew|🍺|homebrew formulae|meter|serial|no"
+    "brew-cask|🍻|homebrew casks|meter|serial|yes"
+    "rustup|🦀|rustup|monkey|par|no"
+    "mise|🧰|mise|minidot|par|no"
+    "npm|📦|npm globals|line|par|no"
+    "krew|☸️|krew|points|par|no"
+    "gh|🐙|gh extensions|pulse|par|no"
+    "atuin|🐢|atuin sync|moon|par|no"
+    "cargo|🦞|cargo bins|dot|par|no"
+    "gup|🐹|go bins|dot|par|no"
+)
 
 # ---- step bodies ---------------------------------------------------------
-# Pure work, no decoration: gum hides their stdout, so any echo here is noise.
-# Exported so `gum spin -- bash -c '<name>'` can see them in its subshell.
+# Pure work, no decoration: their stdout is redirected to a per-step log, so any
+# echo here is for the log, not the screen. Exported so the `bash -c` each step
+# runs in can see them.
 
-# nix-darwin: bump flake inputs, then apply. Replicates mise.toml's
-# `darwin-switch` task. PATH and USER are propagated through sudo; HOME is
-# deliberately not, so nix doesn't write root-owned files into ~/.cache/nix.
-# USER + --impure are required because flake.nix resolves the config name from
-# `builtins.getEnv "USER"`; without them eval falls back to "user" and the
-# `.#$who` attribute (e.g. darwinConfigurations.takumaniwa) won't exist.
-do_nix() {
+do_flake() { cd "$DOTFILES_DIR" && nix flake update; }
+
+# nix-darwin: apply the flake. The one implementation — mise.toml's
+# `darwin-switch` task delegates here rather than keeping a second copy.
+# PATH and USER are propagated through sudo; HOME is deliberately not, so nix
+# doesn't write root-owned files into ~/.cache/nix. USER + --impure are required
+# because flake.nix resolves the config name from `builtins.getEnv "USER"`;
+# without them eval falls back to "user" and the `.#$who` attribute (e.g.
+# darwinConfigurations.takumaniwa) won't exist.
+do_darwin() {
     cd "$DOTFILES_DIR" || return 1
-    nix flake update || return 1
     local path who; path=$PATH; who=$(whoami)
-    # `sudo -n`: this runs inside `gum spin`, which swallows the password
+    # `sudo -n`: this can run inside `gum spin`, which swallows the password
     # prompt. The credential was already cached by the up-front `sudo -v`, so
     # -n succeeds here; if it has expired, -n fails fast with a visible error
     # instead of hanging on an invisible prompt.
@@ -94,21 +132,26 @@ do_nix() {
 # catalog actually refreshes before upgrading.
 #
 # HOMEBREW_NO_ASK=1: ask-mode is on by default now (brew prints the upgrade plan
-# and prompts "proceed? [y/n]"). That prompt runs inside `gum spin`, which hides
-# stdout/stderr, so it would hang invisibly forever (same trap as the sudo one).
-# This is an unattended run, so disable ask-mode and just proceed.
-#
-# `brew upgrade --cask` is the step that needs root mid-run: a Pkg-artifact cask
-# (multipass) shells out to `sudo launchctl`/`pkgutil` to tear the old service
-# down. That's why the up-front credential has to be kept alive (see the
-# keep-alive below the `sudo -v`), not just warmed once.
+# and prompts "proceed? [y/n]"). That prompt can run inside `gum spin`, which
+# hides stdout/stderr, so it would hang invisibly forever (same trap as the sudo
+# one). This is an unattended run, so disable ask-mode and just proceed.
 do_brew() {
     export HOMEBREW_NO_ASK=1   # runs in its own bash -c subshell; scope is this step.
     # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
     HOMEBREW_NO_AUTO_UPDATE= brew update \
         && brew upgrade \
-        && brew upgrade --cask \
         && brew cleanup
+}
+
+# Casks are their own step because they are the part that needs root mid-run: a
+# Pkg-artifact cask (multipass) shells out to `sudo launchctl`/`pkgutil` to tear
+# the old service down. Folded into do_brew it was unguarded — with no sudo
+# grant it sat on an invisible password prompt behind the spinner until the
+# watchdog killed it 30 minutes later. As its own sudo:yes step it is skipped
+# cleanly instead, and the formula upgrades still run.
+do_brew_cask() {
+    export HOMEBREW_NO_ASK=1
+    brew upgrade --cask
 }
 
 do_rustup() { rustup update; }
@@ -117,97 +160,278 @@ do_mise()   { mise upgrade; }
 # `npm update -g` stays within semver ranges, missing major bumps (ncu 16→22).
 # Re-install each globally-outdated package at @latest to cross majors too.
 do_npm() {
+    local out rc
+    out=$(npm outdated -g --parseable --depth=0); rc=$?
+    # `npm outdated` exits 1 when something IS outdated, so only >1 is a real
+    # failure. This used to be `2>/dev/null` with the status dropped, which made
+    # a broken npm indistinguishable from "nothing to do" and reported ✓.
+    ((rc > 1)) && return "$rc"
     local -a specs=()
+    local name
+    # --parseable is path:name@wanted:name@current:name@latest — field 4 carries
+    # the name, and `@[^@]*$` strips only the version, leaving @scope/name whole.
     while IFS= read -r name; do
         [[ -n "$name" ]] && specs+=("${name}@latest")
-    done < <(npm outdated -g --parseable --depth=0 2>/dev/null \
-                | awk -F: '{print $4}' | sed 's/@[^@]*$//')
-    ((${#specs[@]} == 0)) && return 0
+    done < <(printf '%s\n' "$out" | awk -F: 'NF > 1 {print $4}' | sed 's/@[^@]*$//')
+    ((${#specs[@]} == 0)) && { echo "nothing outdated"; return 0; }
     npm install -g "${specs[@]}"
 }
 
 do_krew()  { kubectl krew upgrade; }
 do_gh()    { gh extension upgrade --all; }
 do_atuin() { atuin sync -f; }
-export -f do_nix do_brew do_rustup do_mise do_npm do_krew do_gh do_atuin
+do_cargo() { cargo install-update -a; }
+do_gup()   { gup update; }
+export -f do_flake do_darwin do_brew do_brew_cask do_rustup do_mise do_npm \
+          do_krew do_gh do_atuin do_cargo do_gup
 
 # ---- guards: is this step applicable on this machine? --------------------
-# nix-darwin also needs sudo. If the up-front `sudo -v` failed (SUDO_OK=false),
-# return false here so the step is cleanly skipped — otherwise darwin-rebuild's
-# own sudo prompt gets buried inside the gum spinner and the run hangs forever.
-g_nix()    { have nix && [[ "$SUDO_OK" == true ]]; }
-g_brew()   { have brew; }
-g_rustup() { have rustup; }
-g_mise()   { have mise; }
-g_npm()    { have npm; }
-g_krew()   { have kubectl && kubectl krew version >/dev/null 2>&1; }
-g_gh()     { have gh; }
-g_atuin()  { have atuin; }
+# Each sets SKIP_REASON before returning false, so a skip line says which of
+# "not installed" / "not configured" it actually is. Reporting "not installed"
+# for a tool that is installed but unusable (atuin without a login) hid a step
+# that failed on every single run.
+# The multi-line guards below must write `|| { _missing x; return 1; }` and not
+# a bare `|| _missing x`: a helper cannot return for its caller, so the bare
+# form set the reason and then fell through to the next check. That is how
+# `rustup` ran — and failed with exit 127 — on a machine with no rustup at all.
+SKIP_REASON=
+_missing() { SKIP_REASON="$1 not installed"; return 1; }
 
-# ---- orchestration -------------------------------------------------------
+g_flake()  { have nix || _missing nix; }
+g_darwin() { have nix || _missing nix; }
+g_brew()   { have brew || _missing brew; }
+g_brew_cask() { have brew || _missing brew; }
+g_mise()   { have mise || _missing mise; }
+g_npm()    { have npm || _missing npm; }
+g_gh()     { have gh || _missing gh; }
+g_cargo()  { have cargo-install-update || _missing "cargo-install-update (cargo install cargo-update)"; }
+g_gup()    { have gup || _missing "gup (go install github.com/nao1215/gup@latest)"; }
+
+# A rustup shim can exist with no toolchains behind it (rust installed through
+# mise or nix), where `rustup update` just errors every run.
+g_rustup() {
+    have rustup || { _missing rustup; return 1; }
+    [[ -d "${RUSTUP_HOME:-$HOME/.rustup}/toolchains" ]] || {
+        SKIP_REASON="no rustup toolchains"; return 1; }
+}
+
+g_krew() {
+    have kubectl || { _missing kubectl; return 1; }
+    kubectl krew version >/dev/null 2>&1 || { SKIP_REASON="krew plugin not installed"; return 1; }
+}
+
+# `atuin sync` needs a logged-in session; without one it fails on every run and
+# the failure is indistinguishable from a real sync error.
+g_atuin() {
+    have atuin || { _missing atuin; return 1; }
+    [[ -s "${XDG_DATA_HOME:-$HOME/.local/share}/atuin/session" ]] || {
+        SKIP_REASON="not signed in (atuin login)"; return 1; }
+}
+
+# ---- plan ----------------------------------------------------------------
 declare -a DONE=() FAILED=() SKIPPED=()
-IDX=0
-TOTAL=8
-SUDO_OK=true   # flipped to false below if the up-front `sudo -v` fails.
+declare -a SEL_NAME=() SEL_EMOJI=() SEL_LABEL=() SEL_SPIN=() SEL_PHASE=() SEL_SUDO=()
+SUDO_OK=true       # flipped to false below if the up-front `sudo -v` fails.
+SUDO_NEEDED=false  # only prompt when a selected step actually wants root.
+VERBOSE=false
+DRY_RUN=false
+ONLY=
+SKIP=
 
-# step <emoji> <label> <spinner> <fn> <guard>
-step() {
-    local emoji="$1" label="$2" spin="$3" fn="$4" guard="$5" reason="${6:-not installed}"
-    IDX=$((IDX + 1))
-    local tag; tag=$(printf '[%d/%d]' "$IDX" "$TOTAL")
+all_names() {
+    local rec
+    for rec in "${STEPS[@]}"; do printf '%s\n' "${rec%%|*}"; done
+}
 
-    if ! "$guard"; then
-        printf '%s  %s %s %s — skipped (%s)%s\n' \
-            "$D" "$tag" "$emoji" "$label" "$reason" "$X"
-        SKIPPED+=("$label"); return
+# Comma-separated list membership, exact match only.
+in_list() {
+    local needle="$1" list="$2" item
+    local IFS=','
+    for item in $list; do [[ "$item" == "$needle" ]] && return 0; done
+    return 1
+}
+
+# A typo in --only used to silently run nothing at all; name it and exit 2.
+validate_names() {
+    local flag="$1" list="$2" item known
+    known=$(all_names)
+    local IFS=','
+    for item in $list; do
+        [[ -n "$item" ]] || continue
+        grep -qx -- "$item" <<<"$known" || {
+            printf '%sunknown step in %s: %s%s\nknown steps: %s\n' \
+                "$R" "$flag" "$item" "$X" "$(all_names | paste -sd, -)" >&2
+            exit 2
+        }
+    done
+}
+
+build_plan() {
+    local rec name emoji label spin phase sudo
+    for rec in "${STEPS[@]}"; do
+        IFS='|' read -r name emoji label spin phase sudo <<<"$rec"
+        [[ -n "$ONLY" ]] && ! in_list "$name" "$ONLY" && continue
+        [[ -n "$SKIP" ]] &&   in_list "$name" "$SKIP" && continue
+        SEL_NAME+=("$name"); SEL_EMOJI+=("$emoji"); SEL_LABEL+=("$label")
+        SEL_SPIN+=("$spin"); SEL_PHASE+=("$phase"); SEL_SUDO+=("$sudo")
+        [[ "$sudo" == yes ]] && SUDO_NEEDED=true
+    done
+}
+
+# ---- running a step ------------------------------------------------------
+# Deliberately NOT --foreground: that flag skips putting the command in its own
+# process group, so on expiry only the direct `bash -c` is signalled and the
+# actual worker (darwin-rebuild, brew bundle, mas install) is orphaned and keeps
+# running. Verified: with --foreground a grandchild survives the kill, without it
+# the whole group dies. The steps here never read the TTY (sudo is pre-warmed,
+# HOMEBREW_NO_ASK=1), so the group has nothing to lose by it.
+# Caveat: `do_darwin` does its work through `sudo`, and a user-owned timeout
+# can't signal a root process - that step still ends at 124 and frees the run,
+# but the root child has to be reaped by hand.
+RUNNER=()
+build_runner() {
+    local fn="do_${1//-/_}" inner
+    if $VERBOSE; then
+        inner="set -uo pipefail; $fn 2>&1 | tee \"\$BUMP_LOG\""
+    else
+        inner="set -uo pipefail; exec >\"\$BUMP_LOG\" 2>&1; $fn"
     fi
-
-    # Deliberately NOT --foreground: that flag skips putting the command in its
-    # own process group, so on expiry only the direct `bash -c` is signalled and
-    # the actual worker (darwin-rebuild, brew bundle, mas install) is orphaned and
-    # keeps running. Verified: with --foreground a grandchild survives the kill,
-    # without it the whole group dies. The steps here never read the TTY (sudo is
-    # pre-warmed, HOMEBREW_NO_ASK=1), so the group has nothing to lose by it.
-    # Caveat: `do_nix` does its work through `sudo`, and a user-owned timeout
-    # can't signal a root process - that step still ends at 124 and frees the run,
-    # but the root child has to be reaped by hand.
-    local -a runner=(bash -c "set -uo pipefail; $fn")
-    local wrapped=false
+    RUNNER=(bash -c "$inner")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
-        runner=("$TIMEOUT_BIN" "$BUMP_TIMEOUT" "${runner[@]}")
-        wrapped=true
-    fi
-
-    local t0=$SECONDS rc
-    if $HAS_GUM; then
-        gum spin --spinner "$spin" \
-            --spinner.foreground 212 --title.foreground 252 \
-            --title "  $tag  $emoji  ${label}…" \
-            "${SPIN_FLAGS[@]}" -- "${runner[@]}"
-        rc=$?
-    else
-        printf '%s▸ %s %s %s…%s\n' "$C" "$tag" "$emoji" "$label" "$X"
-        "${runner[@]}"; rc=$?
-    fi
-    local dt=$((SECONDS - t0))
-
-    if ((rc == 0)); then
-        printf '%s  ✓%s %s %s %s%s(%ds)%s\n' "$G" "$X" "$emoji" "$label" "$D" "$D" "$dt" "$X"
-        DONE+=("$label")
-    elif $wrapped && ((rc == 124)); then
-        # 124 only means "watchdog fired" when the watchdog was actually in play;
-        # unwrapped it's just the step's own exit status.
-        printf '%s  ✗ %s %s timed out%s %s(%ds — BUMP_TIMEOUT=%ss)%s\n' \
-            "$R" "$emoji" "$label" "$X" "$D" "$dt" "$BUMP_TIMEOUT" "$X"
-        FAILED+=("$label")
-    else
-        printf '%s  ✗ %s %s failed%s %s(%ds — output above)%s\n' "$R" "$emoji" "$label" "$X" "$D" "$dt" "$X"
-        FAILED+=("$label")
+        RUNNER=("$TIMEOUT_BIN" "$BUMP_TIMEOUT" "${RUNNER[@]}")
     fi
 }
 
+tag() { printf '[%d/%d]' "$1" "${#SEL_NAME[@]}"; }
+
+say_skip() { # idx emoji label reason
+    printf '%s  %s %s %s — skipped (%s)%s\n' "$D" "$(tag "$1")" "$2" "$3" "$4" "$X"
+    SKIPPED+=("$3")
+}
+
+# rc==124 only means "watchdog fired" when the watchdog was actually in play;
+# unwrapped it is just the step's own exit status.
+say_result() { # idx emoji label rc secs log
+    local idx="$1" emoji="$2" label="$3" rc="$4" dt="$5" log="$6" t
+    # The parallel phase has no spinner title to carry the tag and reports out
+    # of order, so the tag has to be on the result line itself.
+    t=$(tag "$idx")
+    if ((rc == 0)); then
+        printf '%s  ✓%s %s %s %s %s(%ds)%s\n' "$G" "$X" "$t" "$emoji" "$label" "$D" "$dt" "$X"
+        DONE+=("$label"); return
+    fi
+    FAILED+=("$label")
+    if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]] && ((rc == 124)); then
+        printf '%s  ✗ %s %s %s timed out%s %s(%ds — BUMP_TIMEOUT=%ss)%s\n' \
+            "$R" "$t" "$emoji" "$label" "$X" "$D" "$dt" "$BUMP_TIMEOUT" "$X"
+    else
+        printf '%s  ✗ %s %s %s failed%s %s(%ds — exit %d)%s\n' \
+            "$R" "$t" "$emoji" "$label" "$X" "$D" "$dt" "$rc" "$X"
+    fi
+    # The log is the only copy of the output outside verbose mode, so show the
+    # tail right here instead of making the reader go find it.
+    if ! $VERBOSE && [[ -s "$log" ]]; then
+        printf '%s' "$D"
+        tail -n 30 "$log" | sed 's/^/      /'
+        printf '%s' "$X"
+    fi
+}
+
+# Returns 1 when the step was skipped, so callers can stop there.
+check_step() { # idx name emoji label sudo
+    local idx="$1" name="$2" emoji="$3" label="$4" sudo="$5"
+    if [[ "$sudo" == yes && "$SUDO_OK" != true ]]; then
+        say_skip "$idx" "$emoji" "$label" "needs sudo"; return 1
+    fi
+    SKIP_REASON="not applicable"
+    if ! "g_${name//-/_}"; then
+        say_skip "$idx" "$emoji" "$label" "$SKIP_REASON"; return 1
+    fi
+    return 0
+}
+
+run_serial() { # idx name emoji label spin
+    local idx="$1" name="$2" emoji="$3" label="$4" spin="$5"
+    local log="$LOG_DIR/$name.log" t0=$SECONDS rc
+    build_runner "$name"
+    if $HAS_GUM && ! $VERBOSE; then
+        BUMP_LOG="$log" gum spin --spinner "$spin" \
+            --spinner.foreground 212 --title.foreground 252 \
+            --title "  $(tag "$idx")  $emoji  ${label}…" -- "${RUNNER[@]}"
+        rc=$?
+    else
+        printf '%s▸ %s %s %s…%s\n' "$C" "$(tag "$idx")" "$emoji" "$label" "$X"
+        BUMP_LOG="$log" "${RUNNER[@]}"; rc=$?
+    fi
+    say_result "$idx" "$emoji" "$label" "$rc" $((SECONDS - t0)) "$log"
+}
+
+# The independent managers, concurrently. Each child writes "<rc> <secs>" to a
+# sentinel file as its last act; the parent polls for those rather than for the
+# pid, because a finished-but-unreaped child still answers `kill -0` and the
+# poll would never end. Results print in completion order, which is also the
+# only live feedback this phase has — there is no spinner over a group.
+run_parallel() { # idx... passed as parallel arrays via globals below
+    local -a p_idx=() p_name=() p_emoji=() p_label=()
+    local i n
+    for i in "${PAR_IDX[@]}"; do
+        n="${SEL_NAME[$i]}"
+        check_step "$((i + 1))" "$n" "${SEL_EMOJI[$i]}" "${SEL_LABEL[$i]}" "${SEL_SUDO[$i]}" || continue
+        p_idx+=("$((i + 1))"); p_name+=("$n")
+        p_emoji+=("${SEL_EMOJI[$i]}"); p_label+=("${SEL_LABEL[$i]}")
+    done
+    ((${#p_name[@]} == 0)) && return 0
+
+    printf '%s▸ %d in parallel: %s%s\n' "$C" "${#p_name[@]}" "$(join_with ', ' "${p_label[@]}")" "$X"
+
+    local name log
+    local -a pids=()
+    for i in "${!p_name[@]}"; do
+        name="${p_name[$i]}"; log="$LOG_DIR/$name.log"
+        build_runner "$name"
+        (
+            t0=$SECONDS
+            BUMP_LOG="$log" "${RUNNER[@]}"
+            printf '%d %d\n' "$?" "$((SECONDS - t0))" >"$LOG_DIR/$name.rc"
+        ) &
+        pids+=($!)
+    done
+
+    local remaining=${#p_name[@]} rc dt
+    local -a reported=()
+    for i in "${!p_name[@]}"; do reported[i]=0; done
+    while ((remaining > 0)); do
+        for i in "${!p_name[@]}"; do
+            ((reported[i])) && continue
+            [[ -f "$LOG_DIR/${p_name[$i]}.rc" ]] || continue
+            read -r rc dt <"$LOG_DIR/${p_name[$i]}.rc"
+            say_result "${p_idx[$i]}" "${p_emoji[$i]}" "${p_label[$i]}" \
+                "$rc" "$dt" "$LOG_DIR/${p_name[$i]}.log"
+            reported[i]=1; remaining=$((remaining - 1))
+        done
+        ((remaining > 0)) && sleep 0.2
+    done
+    # Reap by pid, never a bare `wait`: the sudo keep-alive is also a child of
+    # this shell and it loops until the run ends, so a bare `wait` here hangs
+    # the whole run forever right after the last step reports.
+    local pid
+    for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null; done
+}
+
+# Comma-joined, not space-joined: labels contain spaces ("npm globals", "gh
+# extensions"), so a space-joined summary line gives no way to count them.
+join_with() { # sep item...
+    local sep="$1"; shift
+    (($# == 0)) && { printf '—'; return; }
+    local out="$1"; shift
+    local item
+    for item in "$@"; do out+="${sep}${item}"; done
+    printf '%s' "$out"
+}
+
+# ---- chrome --------------------------------------------------------------
 banner() {
-    if $HAS_GUM; then
+    if $HAS_GUM && ! $VERBOSE; then
         gum style --border double --border-foreground 212 \
             --foreground 213 --bold --align center \
             --padding "1 6" --margin "1 0" --width 48 \
@@ -220,15 +444,30 @@ banner() {
 
 summary() {
     local elapsed=$1
-    local dn="${DONE[*]:-—}"  sk="${SKIPPED[*]:-—}"  fl="${FAILED[*]:-—}"
-    local counts; counts=$(printf '✅ %d updated   💤 %d skipped   ❌ %d failed' \
+    local dn sk fl counts
+    # `${a[@]+"${a[@]}"}`, not a plain `"${a[@]}"`: macOS still ships bash 3.2 at
+    # /bin/bash, where expanding an EMPTY array under `set -u` is an unbound
+    # variable error. These three are the only expansions here that can be empty
+    # (every other one is behind a count check), and on a fresh Mac — before
+    # homebrew puts bash 5 on PATH — /bin/bash is exactly what runs this.
+    dn=$(join_with ', ' ${DONE[@]+"${DONE[@]}"})
+    sk=$(join_with ', ' ${SKIPPED[@]+"${SKIPPED[@]}"})
+    fl=$(join_with ', ' ${FAILED[@]+"${FAILED[@]}"})
+    counts=$(printf '✅ %d updated   💤 %d skipped   ❌ %d failed' \
         "${#DONE[@]}" "${#SKIPPED[@]}" "${#FAILED[@]}")
 
+    # "all done" for a run where every step was skipped is how a PATH accident
+    # reads as success. Say what actually happened instead.
     local head color=84
-    if ((${#FAILED[@]})); then head="💥  finished with errors  ·  ${elapsed}s"; color=203
-    else                       head="🎉  all done  ·  ${elapsed}s"; fi
+    if ((${#FAILED[@]})); then
+        head="💥  finished with errors  ·  ${elapsed}s"; color=203
+    elif ((${#DONE[@]} == 0)); then
+        head="🤷  nothing to do  ·  ${elapsed}s"; color=244
+    else
+        head="🎉  all done  ·  ${elapsed}s"
+    fi
 
-    if $HAS_GUM; then
+    if $HAS_GUM && ! $VERBOSE; then
         gum style --border rounded --border-foreground "$color" \
             --padding "1 3" --margin "1 0" \
             "$head" "" "$counts" \
@@ -239,13 +478,43 @@ summary() {
         printf '\n%s── %s ──%s\n%s\n' "$P" "$head" "$X" "$counts"
         printf '  updated: %s\n  skipped: %s\n  failed:  %s\n' "$dn" "$sk" "$fl"
     fi
+    printf '%s  · logs: %s%s\n' "$D" "$LOG_DIR" "$X"
+}
 
-    # Footnote: tools with no clean bulk-update path — flagged so it's obvious
-    # they're intentionally untouched, not forgotten.
-    printf '%s  · cargo/go bins are not auto-updated (no bulk updater here)%s\n' "$D" "$X"
+# Keep the last 20 runs. Names are timestamps, so no spaces and no glob chars.
+prune_logs() {
+    local d n=0
+    while IFS= read -r d; do
+        n=$((n + 1))
+        ((n > 20)) && rm -rf "$d"
+    done < <(ls -1dt "$LOG_ROOT"/*/ 2>/dev/null)
+    return 0
+}
+
+# A dry run must not prompt for a password, so it never warms sudo and cannot
+# know whether the grant would take. It marks the root-hungry steps with 🔐
+# instead of guessing.
+dry_run() {
+    local i name note
+    printf '%s  plan (%d steps) — nothing will run%s\n\n' "$D" "${#SEL_NAME[@]}" "$X"
+    for i in "${!SEL_NAME[@]}"; do
+        name="${SEL_NAME[$i]}"
+        note="${SEL_PHASE[$i]}"
+        [[ "${SEL_SUDO[$i]}" == yes ]] && note="$note, sudo 🔐"
+        SKIP_REASON="not applicable"
+        if "g_${name//-/_}"; then
+            printf '%s  ✓%s %s %-22s %s%s · %s%s\n' "$G" "$X" "${SEL_EMOJI[$i]}" \
+                "${SEL_LABEL[$i]}" "$D" "$note" "$name" "$X"
+        else
+            printf '%s  ·  %s %-22s skipped (%s)%s\n' "$D" "${SEL_EMOJI[$i]}" \
+                "${SEL_LABEL[$i]}" "$SKIP_REASON" "$X"
+        fi
+    done
 }
 
 # ---- main ----------------------------------------------------------------
+need_arg() { [[ -n "${2:-}" ]] || { printf '%s%s needs a value%s\n' "$R" "$1" "$X" >&2; exit 2; }; }
+
 while (($#)); do
     case "$1" in
         -h|--help)
@@ -253,10 +522,21 @@ while (($#)); do
             # first non-comment line), stripping the leading "# ".
             awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
             exit 0 ;;
-        -v|--verbose) SPIN_FLAGS=(--show-output); shift ;;
+        -l|--list)     all_names; exit 0 ;;
+        -v|--verbose)  VERBOSE=true; shift ;;
+        -n|--dry-run)  DRY_RUN=true; shift ;;
+        --only)        need_arg "$1" "${2:-}"; ONLY="$2"; shift 2 ;;
+        --only=*)      ONLY="${1#*=}"; shift ;;
+        --skip)        need_arg "$1" "${2:-}"; SKIP="$2"; shift 2 ;;
+        --skip=*)      SKIP="${1#*=}"; shift ;;
         *) printf '%sunknown argument: %s%s\ntry: bump --help\n' "$R" "$1" "$X" >&2; exit 2 ;;
     esac
 done
+
+[[ -n "$ONLY" ]] && validate_names --only "$ONLY"
+[[ -n "$SKIP" ]] && validate_names --skip "$SKIP"
+build_plan
+((${#SEL_NAME[@]} == 0)) && { printf '%sno steps selected%s\n' "$R" "$X" >&2; exit 2; }
 
 banner
 start=$SECONDS
@@ -267,15 +547,26 @@ if ((BUMP_TIMEOUT > 0)) && [[ -z "$TIMEOUT_BIN" ]]; then
     printf '%s  ⚠️  no timeout(1)/gtimeout from coreutils — steps run unbounded this time.%s\n' "$R" "$X"
 fi
 
-printf '%s  🔐 warming sudo (needed for the nix-darwin switch)…%s\n' "$D" "$X"
-# Prompt once, up front, instead of mid-run. If this fails (wrong password,
-# no sudo rights), DON'T plough ahead: every sudo inside a step runs under
-# `gum spin`, which hides stdout/stderr, so a second prompt would be invisible
-# and the run would hang on it forever (the "3156s" hang). Record the failure
-# and let g_nix skip nix-darwin cleanly while the non-sudo managers still run.
-if ! sudo -v; then
-    SUDO_OK=false
-    printf '%s  ⚠️  sudo not authorized — skipping nix-darwin, running the rest.%s\n' "$R" "$X"
+# Prompt once, up front, instead of mid-run. If this fails (wrong password, no
+# sudo rights), DON'T plough ahead into the steps that need root: every sudo
+# inside a step can run under `gum spin`, which hides stdout/stderr, so a second
+# prompt would be invisible and the run would hang on it forever (the "3156s"
+# hang). Record the failure and let the sudo:yes steps skip cleanly while the
+# rest still run. Steps that don't need root never trigger the prompt at all.
+MAIN_PID=$$
+cleanup_sudo() { [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; }
+SUDO_KEEPALIVE_PID=
+if $SUDO_NEEDED && ! $DRY_RUN; then
+    declare -a sudo_labels=()
+    for i in "${!SEL_NAME[@]}"; do
+        [[ "${SEL_SUDO[$i]}" == yes ]] && sudo_labels+=("${SEL_LABEL[$i]}")
+    done
+    printf '%s  🔐 warming sudo (needed for: %s)…%s\n' \
+        "$D" "$(join_with ', ' "${sudo_labels[@]}")" "$X"
+    if ! sudo -v; then
+        SUDO_OK=false
+        printf '%s  ⚠️  sudo not authorized — skipping the steps that need root.%s\n' "$R" "$X"
+    fi
 fi
 
 # Warming it once is not enough: macOS's sudo timestamp lapses after ~5 minutes,
@@ -283,38 +574,51 @@ fi
 # reached multipass (a Pkg cask, so `sudo launchctl`/`pkgutil`) ~25 minutes in.
 # sudo writes that prompt straight to /dev/tty, which the gum spinner is busy
 # repainting, so it is invisible in practice and the run just sits on it until
-# the watchdog kills the step (the "homebrew timed out — 1800s" run). Refreshing
-# in the background keeps every later sudo non-interactive.
+# the watchdog kills the step. Refreshing in the background keeps every later
+# sudo non-interactive.
 #
 # `sudo -n -v` so the refresher itself can never become the thing that prompts:
 # if the grant is revoked mid-run it exits, and the step's own sudo then fails
-# loudly rather than blocking. The `kill -0 $$` makes it self-terminate within a
-# minute even if the trap below never runs (SIGKILL, crash).
-cleanup_sudo() { [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; }
-SUDO_KEEPALIVE_PID=
-if [[ "$SUDO_OK" == true ]]; then
-    while sudo -n -v 2>/dev/null; do
-        sleep 60
-        kill -0 "$$" 2>/dev/null || exit 0
-    done &
+# loudly rather than blocking. The `kill -0 $MAIN_PID` makes it self-terminate
+# within a minute even if the trap below never runs (SIGKILL, crash), and the
+# sleep runs as a tracked child so the TERM trap can take it down with the loop
+# instead of leaving a stray `sleep 60` behind after the run ends.
+if $SUDO_NEEDED && ! $DRY_RUN && [[ "$SUDO_OK" == true ]]; then
+    (
+        sleeper=
+        trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
+        while sudo -n -v 2>/dev/null; do
+            sleep 60 & sleeper=$!
+            wait "$sleeper" 2>/dev/null
+            kill -0 "$MAIN_PID" 2>/dev/null || exit 0
+        done
+    ) &
     SUDO_KEEPALIVE_PID=$!
     trap cleanup_sudo EXIT
     trap 'cleanup_sudo; exit 130' INT TERM
 fi
+
+if $DRY_RUN; then
+    echo
+    dry_run
+    exit 0
+fi
+
+mkdir -p "$LOG_DIR" || { printf '%scannot create log dir %s%s\n' "$R" "$LOG_DIR" "$X" >&2; exit 2; }
 echo
 
-step "❄️"  "nix-darwin"    globe   do_nix    g_nix    "needs nix + sudo"
-step "🍺"  "homebrew"      meter   do_brew   g_brew
-step "🦀"  "rustup"        monkey  do_rustup g_rustup
-step "🧰"  "mise"          minidot do_mise   g_mise
-step "📦"  "npm globals"   line    do_npm    g_npm
-step "☸️"  "krew"          points  do_krew   g_krew
-step "🐙"  "gh extensions" pulse   do_gh     g_gh
-step "🐢"  "atuin"         moon    do_atuin  g_atuin
-
-# catch TOTAL drifting from the number of step calls above.
-((IDX == TOTAL)) || printf '%s  ⚠️  step count %d != TOTAL %d%s\n' \
-    "$R" "$IDX" "$TOTAL" "$X" >&2
+# Serial phase first (ordered, root-hungry), then the independent managers.
+# --verbose forces everything serial: concurrent live output is unreadable.
+declare -a PAR_IDX=()
+for i in "${!SEL_NAME[@]}"; do
+    if [[ "${SEL_PHASE[$i]}" == par ]] && ! $VERBOSE; then
+        PAR_IDX+=("$i"); continue
+    fi
+    check_step "$((i + 1))" "${SEL_NAME[$i]}" "${SEL_EMOJI[$i]}" "${SEL_LABEL[$i]}" "${SEL_SUDO[$i]}" \
+        && run_serial "$((i + 1))" "${SEL_NAME[$i]}" "${SEL_EMOJI[$i]}" "${SEL_LABEL[$i]}" "${SEL_SPIN[$i]}"
+done
+((${#PAR_IDX[@]})) && run_parallel
 
 summary $((SECONDS - start))
+prune_logs
 ((${#FAILED[@]} == 0))
