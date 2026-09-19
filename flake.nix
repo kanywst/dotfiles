@@ -145,10 +145,6 @@
               extraEnv = {
                 HOMEBREW_NO_ANALYTICS = "1";
                 HOMEBREW_NO_ENV_HINTS = "1";
-                # Mirrors 00-env.zsh: Homebrew 6.0's build sandbox can't read the
-                # tap-trust store, so a source build from a third-party tap dies
-                # in-sandbox even though nix-darwin marks the entry `trusted: true`.
-                HOMEBREW_NO_REQUIRE_TAP_TRUST = "1";
               } // masSkip;
             };
             # External taps referenced by the brews / casks below.
