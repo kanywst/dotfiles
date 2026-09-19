@@ -675,11 +675,26 @@ if $SUDO_NEEDED && ! $DRY_RUN; then
     for i in "${!SEL_NAME[@]}"; do
         [[ "${SEL_SUDO[$i]}" == yes ]] && sudo_labels+=("${SEL_LABEL[$i]}")
     done
-    printf '%s  🔐 warming sudo (needed for: %s)…%s\n' \
-        "$D" "$(join_with ', ' "${sudo_labels[@]}")" "$X"
-    if ! sudo -v; then
+    # Three outcomes, kept apart because they need different things from the
+    # reader. Already-warm needs nothing and should not print a prompt line at
+    # all. No controlling terminal is not a refusal — it is bump running under
+    # something that captured its output (a CI step, an agent's shell), where
+    # sudo's own message is "a terminal is required to read the password" and
+    # calling that "not authorized" sends the reader off to check sudoers.
+    # Only the third case is an actual refusal.
+    if sudo -n -v 2>/dev/null; then
+        :
+    elif ! { : </dev/tty; } 2>/dev/null; then
         SUDO_OK=false
-        printf '%s  ⚠️  sudo not authorized — skipping the steps that need root.%s\n' "$R" "$X"
+        printf '%s  ⚠️  no terminal to ask for a password on — skipping: %s%s\n' \
+            "$R" "$(join_with ', ' "${sudo_labels[@]}")" "$X"
+    else
+        printf '%s  🔐 warming sudo (needed for: %s)…%s\n' \
+            "$D" "$(join_with ', ' "${sudo_labels[@]}")" "$X"
+        if ! sudo -v; then
+            SUDO_OK=false
+            printf '%s  ⚠️  sudo not authorized — skipping the steps that need root.%s\n' "$R" "$X"
+        fi
     fi
 fi
 
