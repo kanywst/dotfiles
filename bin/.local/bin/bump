@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# work — one-shot "update everything" run for the start of a work session.
+# bump — one-shot "update everything" run for the start of a work session.
 #
 # This machine is nix-darwin declarative (see zsh/conf.d/00-env.zsh:
 # HOMEBREW_NO_AUTO_UPDATE=1, "nix-darwin owns reconciliation"). So the canonical
@@ -16,20 +16,20 @@
 # unless the step fails (--show-error) or --verbose is passed (--show-output).
 # Without gum it degrades to plain, still-readable output.
 #
-# Every step is capped by a watchdog (WORK_TIMEOUT, default 30m). `gum spin`
+# Every step is capped by a watchdog (BUMP_TIMEOUT, default 30m). `gum spin`
 # hides a step's output, so a stalled download or an invisible prompt burns the
 # whole session with nothing on screen; the cap turns that into a failed step and
-# lets the rest of the run finish. Set WORK_TIMEOUT=0 to disable it. The cap needs
+# lets the rest of the run finish. Set BUMP_TIMEOUT=0 to disable it. The cap needs
 # timeout(1) from coreutils; without it the steps run unbounded and the run says
 # so up front rather than pretending it's protected.
 #
 # Usage:
-#   work               # update everything (pretty)
-#   work -v|--verbose  # stream every command's output live
-#   work -h|--help     # show this help
+#   bump               # update everything (pretty)
+#   bump -v|--verbose  # stream every command's output live
+#   bump -h|--help     # show this help
 #
 # Env:
-#   WORK_TIMEOUT=<sec> # per-step watchdog (default 1800, 0 disables)
+#   BUMP_TIMEOUT=<sec> # per-step watchdog (default 1800, 0 disables)
 #   DARWIN_MAS=1       # let the nix-darwin switch install the masApps (fresh Mac)
 
 set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
@@ -38,7 +38,7 @@ export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 
 # Generous on purpose: a real nixpkgs-unstable rebuild can legitimately run for
 # many minutes, so this must only fire on a genuine hang, never on slow work.
-WORK_TIMEOUT="${WORK_TIMEOUT:-1800}"
+BUMP_TIMEOUT="${BUMP_TIMEOUT:-1800}"
 
 # ---- palette (256-color; Ghostty is truecolor) ---------------------------
 P=$'\e[38;5;212m'   # pink
@@ -79,7 +79,7 @@ do_nix() {
     # -n succeeds here; if it has expired, -n fails fast with a visible error
     # instead of hanging on an invisible prompt.
     # DARWIN_MAS is read by the flake through getEnv just like USER, so it has to
-    # survive sudo too - otherwise `DARWIN_MAS=1 work` still skips the mas apps.
+    # survive sudo too - otherwise `DARWIN_MAS=1 bump` still skips the mas apps.
     if command -v darwin-rebuild >/dev/null 2>&1; then
         sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
             darwin-rebuild switch --impure --flake ".#$who"
@@ -173,8 +173,8 @@ step() {
     # but the root child has to be reaped by hand.
     local -a runner=(bash -c "set -uo pipefail; $fn")
     local wrapped=false
-    if ((WORK_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
-        runner=("$TIMEOUT_BIN" "$WORK_TIMEOUT" "${runner[@]}")
+    if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
+        runner=("$TIMEOUT_BIN" "$BUMP_TIMEOUT" "${runner[@]}")
         wrapped=true
     fi
 
@@ -197,8 +197,8 @@ step() {
     elif $wrapped && ((rc == 124)); then
         # 124 only means "watchdog fired" when the watchdog was actually in play;
         # unwrapped it's just the step's own exit status.
-        printf '%s  ✗ %s %s timed out%s %s(%ds — WORK_TIMEOUT=%ss)%s\n' \
-            "$R" "$emoji" "$label" "$X" "$D" "$dt" "$WORK_TIMEOUT" "$X"
+        printf '%s  ✗ %s %s timed out%s %s(%ds — BUMP_TIMEOUT=%ss)%s\n' \
+            "$R" "$emoji" "$label" "$X" "$D" "$dt" "$BUMP_TIMEOUT" "$X"
         FAILED+=("$label")
     else
         printf '%s  ✗ %s %s failed%s %s(%ds — output above)%s\n' "$R" "$emoji" "$label" "$X" "$D" "$dt" "$X"
@@ -211,10 +211,10 @@ banner() {
         gum style --border double --border-foreground 212 \
             --foreground 213 --bold --align center \
             --padding "1 6" --margin "1 0" --width 48 \
-            "⚡  W O R K  ⚡" "" "let's get you up to date"
+            "⚡  B U M P  ⚡" "" "let's get you up to date"
         printf '%s   %s · %s%s\n' "$D" "$(hostname -s)" "$(date '+%a %d %b %H:%M')" "$X"
     else
-        printf '\n%s%s⚡ work%s — %s · %s\n\n' "$B" "$P" "$X" "$(hostname -s)" "$(date '+%a %d %b %H:%M')"
+        printf '\n%s%s⚡ bump%s — %s · %s\n\n' "$B" "$P" "$X" "$(hostname -s)" "$(date '+%a %d %b %H:%M')"
     fi
 }
 
@@ -254,7 +254,7 @@ while (($#)); do
             awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
             exit 0 ;;
         -v|--verbose) SPIN_FLAGS=(--show-output); shift ;;
-        *) printf '%sunknown argument: %s%s\ntry: work --help\n' "$R" "$1" "$X" >&2; exit 2 ;;
+        *) printf '%sunknown argument: %s%s\ntry: bump --help\n' "$R" "$1" "$X" >&2; exit 2 ;;
     esac
 done
 
@@ -263,7 +263,7 @@ start=$SECONDS
 
 # Say so out loud rather than degrading quietly: a run with no watchdog is
 # exactly the run that can burn an hour behind the spinner.
-if ((WORK_TIMEOUT > 0)) && [[ -z "$TIMEOUT_BIN" ]]; then
+if ((BUMP_TIMEOUT > 0)) && [[ -z "$TIMEOUT_BIN" ]]; then
     printf '%s  ⚠️  no timeout(1)/gtimeout from coreutils — steps run unbounded this time.%s\n' "$R" "$X"
 fi
 

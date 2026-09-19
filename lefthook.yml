@@ -17,7 +17,8 @@ pre-commit:
       glob: "*.sh"
       run: shellcheck -e SC1090,SC1091 {staged_files}
     shellcheck-bin:
-      # `work` is bash but has no .sh extension, so the glob above skips it.
+      # `bump`/`bootstrap` are bash but have no .sh extension, so the glob
+      # above skips them.
       glob: "bin/.local/bin/*"
       run: shellcheck -e SC1090,SC1091 {staged_files}
     markdownlint:
