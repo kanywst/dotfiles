@@ -11,9 +11,19 @@ description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
 run = [
     "zsh -n zsh/.zshrc",
     "for f in zsh/conf.d/*.zsh; do [ -f \"$f\" ] || continue; echo == $f; zsh -n \"$f\" || exit 1; done",
-    "shellcheck -e SC1090,SC1091 install.sh 'bin/.local/bin/bump' 'bin/.local/bin/bootstrap'",
+    "shellcheck -e SC1090,SC1091 install.sh tests/*.sh 'bin/.local/bin/bump' 'bin/.local/bin/bootstrap'",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
+]
+
+[tasks.test]
+description = "Run the bump regression suite (also under macOS's bash 3.2)"
+# Twice on purpose: `#!/usr/bin/env bash` picks up brew's bash 5 here, but on a
+# fresh Mac it finds /bin/bash 3.2, where `${arr[@]}` on an empty array under
+# `set -u` is a hard error. The second run is the only thing that catches it.
+run = [
+    "tests/bump.test.sh",
+    "if [ -x /bin/bash ]; then BUMP_TEST_SHELL=/bin/bash tests/bump.test.sh; fi",
 ]
 
 [tasks.install]

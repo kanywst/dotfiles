@@ -187,11 +187,12 @@ mise run darwin-switch  # darwin-rebuild switch
 mise run bootstrap      # brew 外の層を導入 (mise/rustup/krew/gh ext)
 mise run hooks          # lefthook install (.git/hooks/* を書く)
 mise run scan           # ツリー全体に gitleaks detect
+mise run test           # bump の回帰テスト (bash 5 と bash 3.2 の両方)
 ```
 
 `lefthook.yml` は pre-commit で zsh-syntax / shellcheck / markdownlint /
-`gitleaks protect --staged` を、pre-push で `actionlint` + `nix flake check`
-を走らせる。
+`gitleaks protect --staged` を、pre-push で `actionlint` / `nix flake check` /
+`bump` の回帰テストを走らせる。
 
 ### 6. ローカルの秘匿情報
 
@@ -406,7 +407,7 @@ cd <repo> && jj git init --colocate
 ステップは 2 フェーズ。順序と root が要るものが先に直列で走り
 (`flake` → `darwin` → `brew` → `brew-cask`)、それ以降は互いに独立なので並列に走って
 終わったものから順に結果が出る。出力は画面ではなく
-`~/.cache/bump/<timestamp>/<step>.log` に入り、失敗したステップだけログ末尾が
+`~/.cache/bump/<timestamp>-<pid>/<step>.log` に入り、失敗したステップだけログ末尾が
 その場に表示される。直近 20 回分を保持。
 
 | Cmd | 動作 |
@@ -428,6 +429,13 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 
 [cargo-update]: https://github.com/nabijaczleweli/cargo-update
 [gup]: https://github.com/nao1215/gup
+
+`tests/bump.test.sh` が回帰テスト。アサーション 1 個 1 個が実際に踏んだバグに
+対応している。全マネージャを temp の `PATH` に stub して `XDG_CACHE_HOME` /
+`DOTFILES_DIR` も逃がすので、実機には一切触らないしネットワークも要らない。
+pre-push と CI と `mise run test` で走る。`mise run test` は 2 回走らせる —
+2 回目は `/bin/bash` で、fresh Mac の `#!/usr/bin/env bash` が掴むのは macOS
+同梱の bash 3.2 で、`set -u` 下の空配列に厳しいから。
 
 各ステップには watchdog が付く (`BUMP_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。出力は画面ではなくログに入るので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
 

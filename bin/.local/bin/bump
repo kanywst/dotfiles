@@ -55,7 +55,12 @@ export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 BUMP_TIMEOUT="${BUMP_TIMEOUT:-1800}"
 
 LOG_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/bump"
-LOG_DIR="$LOG_ROOT/$(date +%Y%m%d-%H%M%S)"
+# The pid is part of the name, not decoration: the timestamp has one-second
+# resolution, so two runs started in the same second shared a directory — and
+# the parallel phase finds a step's sentinel from the PREVIOUS run already
+# sitting there and reports its result instead of running its own. Found by the
+# test suite, which starts runs back to back.
+LOG_DIR="$LOG_ROOT/$(date +%Y%m%d-%H%M%S)-$$"
 
 # ---- palette (256-color; Ghostty is truecolor) ---------------------------
 P=$'\e[38;5;212m'   # pink
@@ -197,8 +202,16 @@ export -f do_flake do_darwin do_brew do_brew_cask do_rustup do_mise do_npm \
 SKIP_REASON=
 _missing() { SKIP_REASON="$1 not installed"; return 1; }
 
-g_flake()  { have nix || _missing nix; }
-g_darwin() { have nix || _missing nix; }
+# Both nix steps operate on $DOTFILES_DIR's flake, so a nix binary alone is not
+# enough: pointed at a checkout without one (or at nothing, on a machine where
+# the dotfiles live elsewhere) they failed on every run with nix's own error.
+_has_flake() {
+    have nix || { _missing nix; return 1; }
+    [[ -f "$DOTFILES_DIR/flake.nix" ]] || {
+        SKIP_REASON="no flake.nix in $DOTFILES_DIR"; return 1; }
+}
+g_flake()  { _has_flake; }
+g_darwin() { _has_flake; }
 g_brew()   { have brew || _missing brew; }
 g_brew_cask() { have brew || _missing brew; }
 g_mise()   { have mise || _missing mise; }
@@ -243,27 +256,36 @@ all_names() {
     for rec in "${STEPS[@]}"; do printf '%s\n' "${rec%%|*}"; done
 }
 
-# Comma-separated list membership, exact match only.
+# Comma-separated list membership, exact string match.
+# `set -f` around the split because splitting `$list` on IFS also globs it, so
+# `--skip '*'` would expand against the files in $PWD before anything compared.
 in_list() {
-    local needle="$1" list="$2" item
+    local needle="$1" list="$2" item rc=1
     local IFS=','
-    for item in $list; do [[ "$item" == "$needle" ]] && return 0; done
-    return 1
+    set -f
+    for item in $list; do [[ "$item" == "$needle" ]] && { rc=0; break; }; done
+    set +f
+    return $rc
 }
 
 # A typo in --only used to silently run nothing at all; name it and exit 2.
+# Matching is literal (`grep -F -x`): as a regex, `--only '.*'` would validate
+# against every step name and then select none.
 validate_names() {
     local flag="$1" list="$2" item known
     known=$(all_names)
     local IFS=','
+    set -f
     for item in $list; do
         [[ -n "$item" ]] || continue
-        grep -qx -- "$item" <<<"$known" || {
+        grep -qxF -- "$item" <<<"$known" || {
+            set +f
             printf '%sunknown step in %s: %s%s\nknown steps: %s\n' \
                 "$R" "$flag" "$item" "$X" "$(all_names | paste -sd, -)" >&2
             exit 2
         }
     done
+    set +f
 }
 
 build_plan() {
@@ -276,6 +298,7 @@ build_plan() {
         SEL_SPIN+=("$spin"); SEL_PHASE+=("$phase"); SEL_SUDO+=("$sudo")
         [[ "$sudo" == yes ]] && SUDO_NEEDED=true
     done
+    return 0   # else the loop's last `[[ ]] &&` decides this function's status
 }
 
 # ---- running a step ------------------------------------------------------
@@ -298,11 +321,47 @@ build_runner() {
     fi
     RUNNER=(bash -c "$inner")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
-        RUNNER=("$TIMEOUT_BIN" "$BUMP_TIMEOUT" "${RUNNER[@]}")
+        # -k 30: the watchdog's TERM is only a request. A package manager that
+        # traps it (or is mid-`brew` Ruby teardown) would keep the whole process
+        # group alive past its own timeout, which is the hang the watchdog
+        # exists to end. SIGKILL 30s later makes the cap actually a cap.
+        RUNNER=("$TIMEOUT_BIN" -k 30 "$BUMP_TIMEOUT" "${RUNNER[@]}")
     fi
 }
 
 tag() { printf '[%d/%d]' "$1" "${#SEL_NAME[@]}"; }
+
+# `gum spin` ends by asking the terminal whether it supports synchronized output
+# and grapheme clustering — DECRQM `\e[?2026$p` and `\e[?2027$p`, verifiably the
+# last bytes it writes — and then exits without reading the answers. The terminal
+# replies `\e[?2026;2$y` on the tty INPUT queue, where nothing consumes it, so
+# the replies pile up and the shell reads the whole pile as typed input the
+# moment the run ends: a prompt full of `2026;2$y2027;2$y…`, one pair per
+# spinner step. Redirecting gum's stdin does not help — the reply goes to the
+# terminal, not to gum's fd 0 — so the only fix is to drain the tty ourselves.
+#
+# `stty min 0 time 0` makes the read return whatever is buffered instead of
+# blocking. That form is used rather than `read -t 0.05` because bash 3.2's
+# `read -t` takes whole seconds only, and a 1s stall per step is worse than the
+# bug. TTIN/TTOU are ignored across it so that running bump in the background
+# fails these calls instead of stopping the process on a terminal-access signal.
+drain_tty() {
+    # Probe by opening it, not with `[[ -e /dev/tty ]]`: the device node exists
+    # even for a process with no controlling terminal, where every `</dev/tty`
+    # below then fails — and a failed redirection is reported by bash itself,
+    # which no `2>/dev/null` on the command can suppress.
+    { : </dev/tty; } 2>/dev/null || return 0
+    local saved
+    trap '' TTIN TTOU
+    saved=$(stty -g </dev/tty 2>/dev/null)
+    if [[ -n "$saved" ]]; then
+        stty -icanon min 0 time 0 </dev/tty 2>/dev/null
+        dd bs=4096 count=1 </dev/tty >/dev/null 2>&1
+        stty "$saved" </dev/tty 2>/dev/null
+    fi
+    trap - TTIN TTOU
+    return 0
+}
 
 say_skip() { # idx emoji label reason
     printf '%s  %s %s %s — skipped (%s)%s\n' "$D" "$(tag "$1")" "$2" "$3" "$4" "$X"
@@ -328,11 +387,26 @@ say_result() { # idx emoji label rc secs log
         printf '%s  ✗ %s %s %s failed%s %s(%ds — exit %d)%s\n' \
             "$R" "$t" "$emoji" "$label" "$X" "$D" "$dt" "$rc" "$X"
     fi
-    # The log is the only copy of the output outside verbose mode, so show the
-    # tail right here instead of making the reader go find it.
-    if ! $VERBOSE && [[ -s "$log" ]]; then
+    log_tail "$log"
+}
+
+# A step whose sentinel never arrived. Reported apart from a normal failure
+# because the exit status and the duration are this loop's guesses, not the
+# step's own — saying "exit 137, 62s" as if the step reported that would be a
+# lie about the one case where we know the least.
+say_lost() { # idx emoji label secs log
+    printf '%s  ✗ %s %s %s — no result after %ds (child died before reporting)%s\n' \
+        "$R" "$(tag "$1")" "$2" "$3" "$4" "$X"
+    FAILED+=("$3")
+    log_tail "$5"
+}
+
+# The log is the only copy of the output outside verbose mode, so show the tail
+# right here instead of making the reader go find it.
+log_tail() {
+    if ! $VERBOSE && [[ -s "$1" ]]; then
         printf '%s' "$D"
-        tail -n 30 "$log" | sed 's/^/      /'
+        tail -n 30 "$1" | sed 's/^/      /'
         printf '%s' "$X"
     fi
 }
@@ -359,6 +433,7 @@ run_serial() { # idx name emoji label spin
             --spinner.foreground 212 --title.foreground 252 \
             --title "  $(tag "$idx")  $emoji  ${label}…" -- "${RUNNER[@]}"
         rc=$?
+        drain_tty
     else
         printf '%s▸ %s %s %s…%s\n' "$C" "$(tag "$idx")" "$emoji" "$label" "$X"
         BUMP_LOG="$log" "${RUNNER[@]}"; rc=$?
@@ -384,32 +459,64 @@ run_parallel() { # idx... passed as parallel arrays via globals below
 
     printf '%s▸ %d in parallel: %s%s\n' "$C" "${#p_name[@]}" "$(join_with ', ' "${p_label[@]}")" "$X"
 
-    local name log
+    local name log t_phase=$SECONDS
     local -a pids=()
     for i in "${!p_name[@]}"; do
         name="${p_name[$i]}"; log="$LOG_DIR/$name.log"
+        rm -f "$LOG_DIR/$name.rc" "$LOG_DIR/$name.rc.part"   # never poll a stale one
         build_runner "$name"
         (
             t0=$SECONDS
             BUMP_LOG="$log" "${RUNNER[@]}"
-            printf '%d %d\n' "$?" "$((SECONDS - t0))" >"$LOG_DIR/$name.rc"
+            rc=$?
+            # Write-then-rename: a plain `> $name.rc` is visible to the poller
+            # the instant it is created, so it can be read back empty, and an
+            # empty rc evaluates as 0 in `((rc == 0))` — a crashed step would
+            # report a green tick. rename(2) makes the file appear complete.
+            # Silent on failure: if the sentinel cannot be written the deadline
+            # below is what reports the step, and bash's redirect error would
+            # otherwise land in the middle of the results.
+            { printf '%d %d\n' "$rc" "$((SECONDS - t0))" >"$LOG_DIR/$name.rc.part"; } 2>/dev/null \
+                && mv -f "$LOG_DIR/$name.rc.part" "$LOG_DIR/$name.rc" 2>/dev/null
         ) &
         pids+=($!)
     done
 
-    local remaining=${#p_name[@]} rc dt
+    # A child that is SIGKILLed never writes its sentinel, and polling `kill -0`
+    # instead would not help: an exited-but-unreaped child is a zombie and still
+    # answers it. So bound the wait. No step can legitimately outlive its own
+    # watchdog, so BUMP_TIMEOUT plus a minute of slack is a safe ceiling; with
+    # the watchdog disabled the user has opted out of bounds and we wait.
+    local remaining=${#p_name[@]} rc dt deadline=0
+    if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
+        deadline=$((SECONDS + BUMP_TIMEOUT + 60))
+    fi
     local -a reported=()
     for i in "${!p_name[@]}"; do reported[i]=0; done
     while ((remaining > 0)); do
         for i in "${!p_name[@]}"; do
             ((reported[i])) && continue
             [[ -f "$LOG_DIR/${p_name[$i]}.rc" ]] || continue
+            rc=; dt=
             read -r rc dt <"$LOG_DIR/${p_name[$i]}.rc"
+            # Belt to the rename's braces: never let a non-numeric rc through.
+            [[ "$rc" =~ ^[0-9]+$ && "$dt" =~ ^[0-9]+$ ]] || continue
             say_result "${p_idx[$i]}" "${p_emoji[$i]}" "${p_label[$i]}" \
                 "$rc" "$dt" "$LOG_DIR/${p_name[$i]}.log"
             reported[i]=1; remaining=$((remaining - 1))
         done
-        ((remaining > 0)) && sleep 0.2
+        ((remaining == 0)) && break
+        if ((deadline > 0 && SECONDS > deadline)); then
+            for i in "${!p_name[@]}"; do
+                ((reported[i])) && continue
+                kill "${pids[$i]}" 2>/dev/null
+                say_lost "${p_idx[$i]}" "${p_emoji[$i]}" "${p_label[$i]}" \
+                    $((SECONDS - t_phase)) "$LOG_DIR/${p_name[$i]}.log"
+                reported[i]=1
+            done
+            break
+        fi
+        sleep 0.2
     done
     # Reap by pid, never a bare `wait`: the sudo keep-alive is also a child of
     # this shell and it loops until the run ends, so a bare `wait` here hangs
@@ -482,8 +589,11 @@ summary() {
 }
 
 # Keep the last 20 runs. Names are timestamps, so no spaces and no glob chars.
+# A run where every step was skipped leaves an empty dir; drop it rather than
+# spending one of the 20 slots on a run that recorded nothing.
 prune_logs() {
     local d n=0
+    rmdir "$LOG_DIR" 2>/dev/null
     while IFS= read -r d; do
         n=$((n + 1))
         ((n > 20)) && rm -rf "$d"
@@ -526,9 +636,11 @@ while (($#)); do
         -v|--verbose)  VERBOSE=true; shift ;;
         -n|--dry-run)  DRY_RUN=true; shift ;;
         --only)        need_arg "$1" "${2:-}"; ONLY="$2"; shift 2 ;;
-        --only=*)      ONLY="${1#*=}"; shift ;;
+        # `--only=` with nothing after it used to leave ONLY empty, which reads
+        # as "no filter" and quietly ran the whole thing. Treat it as missing.
+        --only=*)      need_arg --only "${1#*=}"; ONLY="${1#*=}"; shift ;;
         --skip)        need_arg "$1" "${2:-}"; SKIP="$2"; shift 2 ;;
-        --skip=*)      SKIP="${1#*=}"; shift ;;
+        --skip=*)      need_arg --skip "${1#*=}"; SKIP="${1#*=}"; shift ;;
         *) printf '%sunknown argument: %s%s\ntry: bump --help\n' "$R" "$1" "$X" >&2; exit 2 ;;
     esac
 done
@@ -621,4 +733,8 @@ done
 
 summary $((SECONDS - start))
 prune_logs
+# Once more at the end: the per-spinner drain above is the fix, this is the
+# guard against a future gum learning to probe from somewhere else. Whatever it
+# discards is type-ahead typed at an unattended updater, which is no loss.
+drain_tty
 ((${#FAILED[@]} == 0))
