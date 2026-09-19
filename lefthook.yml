@@ -36,7 +36,10 @@ pre-push:
     bump-tests:
       # ~15s. Pre-push rather than pre-commit: the suite forks a run of bump per
       # assertion, which is too slow to sit in front of every commit.
-      glob: "bin/.local/bin/bump"
+      # The suite itself is in the glob: a push that only touches tests/ used to
+      # skip this and let a broken suite through to CI, which is exactly what
+      # happened on the push that fixed it.
+      glob: "{bin/.local/bin/bump,tests/*.sh}"
       run: tests/bump.test.sh
     flake-check:
       glob: "flake.{nix,lock}"
