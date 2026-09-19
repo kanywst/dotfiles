@@ -410,6 +410,10 @@ cd <repo> && jj git init --colocate
 `~/.cache/bump/<timestamp>-<pid>/<step>.log` に入り、失敗したステップだけログ末尾が
 その場に表示される。直近 20 回分を保持。
 
+サマリは走ったステップを所要時間順に並べるので、実時間の大半を食ったやつが一目で
+分かる (十数個の名前の羅列に埋もれない)。1 秒未満は 1 行にまとめる。箱は端末幅に
+合わせる — gum は箱を最長行まで広げて折り返さないため。
+
 | Cmd | 動作 |
 | --- | --- |
 | `bump` | 全部更新: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
