@@ -55,6 +55,30 @@ touch "$TMP/dotfiles/flake.nix"
 
 stub() { printf '%s\n' "#!/bin/sh" "$2" >"$STUB/$1"; chmod +x "$STUB/$1"; }
 
+# Every managed tool, so "nothing is installed" can actually mean that.
+MANAGED="nix rustup mise npm kubectl gh atuin cargo cargo-install-update gup brew darwin-rebuild"
+
+# A system PATH with those filtered out. `$STUB:/usr/bin:/bin` is NOT a clean
+# room: a GitHub runner ships a real `gh` in /usr/bin, so the tests that remove
+# every stub still found it, the guard passed, and the suite ran a live
+# `gh extension upgrade` that failed with exit 4. CI caught that; macOS could
+# not, because none of these live in /usr/bin there. Mirroring the system dirs
+# minus the managed names keeps the script's own coreutils working while making
+# the absence real.
+SYSBIN="$TMP/sysbin"
+mkdir -p "$SYSBIN"
+# Overridable so the filter itself can be tested by pointing it at a directory
+# that does contain a managed tool — the runner's /usr/bin/gh cannot be
+# reproduced on macOS any other way.
+for _d in ${BUMP_TEST_SYSDIRS:-/usr/bin /bin /usr/sbin /sbin}; do
+    [ -d "$_d" ] || continue
+    for _f in "$_d"/*; do
+        _b=${_f##*/}
+        case " $MANAGED " in *" $_b "*) continue ;; esac
+        [ -e "$SYSBIN/$_b" ] || ln -s "$_f" "$SYSBIN/$_b" 2>/dev/null
+    done
+done
+
 # The stub PATH is deliberately minimal, which would leave the watchdog tests
 # vacuous on macOS (no timeout(1) in /usr/bin — it comes from brew's coreutils).
 # Link whatever the outer PATH has into the stub dir so they mean something.
@@ -86,7 +110,7 @@ run() {
     while [[ $# -gt 0 && "$1" != "--" ]]; do env_extra+=("$1"); shift; done
     shift || true
     OUT=$(env -i \
-        PATH="$STUB:/usr/bin:/bin:/usr/sbin:/sbin" \
+        PATH="$STUB:$SYSBIN" \
         HOME="$TMP" \
         TERM=dumb \
         XDG_CACHE_HOME="$TMP/cache" \
@@ -103,6 +127,19 @@ run() {
 # shellcheck disable=SC2016  # $BASH_VERSION must expand in the child, not here.
 printf '%s▸ bump regression suite — %s (%s)%s\n\n' "$dim" \
     "$SHELL_UNDER_TEST" "$("$SHELL_UNDER_TEST" -c 'echo $BASH_VERSION')" "$off"
+
+# --- the harness itself ---------------------------------------------------
+# If this ever regresses, every "not installed" assertion below silently starts
+# testing the runner's real tools instead of the guard.
+_leaked=
+for _m in $MANAGED; do [ -e "$SYSBIN/$_m" ] && _leaked="$_leaked $_m"; done
+if [[ -z "$_leaked" ]]; then
+    ok "the system PATH mirror hides every managed tool"
+else
+    bad "managed tools leaked into the test PATH:$_leaked"
+fi
+assert_eq "the system PATH mirror still has the coreutils bump needs" \
+    "$([ -e "$SYSBIN/date" ] && [ -e "$SYSBIN/sed" ] && [ -e "$SYSBIN/stty" ] && echo yes)" "yes"
 
 # --- CLI surface ----------------------------------------------------------
 reset_stubs
@@ -401,7 +438,7 @@ stty "\$saved" </dev/tty 2>/dev/null
 printf '\nTTYLEFT=%d\n' "\$n"
 GUMRUN
         reset_stubs
-        gum_out=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):/usr/bin:/bin" \
+        gum_out=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):$SYSBIN" \
             python3 "$TMP/responder.py" "$TMP/gumrun.sh" 2>/dev/null | tr -d '\r')
         gum_left=$(printf '%s' "$gum_out" | sed -n 's/.*TTYLEFT=\([0-9]*\).*/\1/p' | tail -1)
         gum_probes=$(printf '%s' "$gum_out" | sed -n 's/.*PROBES=\([0-9]*\).*/\1/p' | tail -1)
