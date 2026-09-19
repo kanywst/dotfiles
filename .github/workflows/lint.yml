@@ -50,6 +50,16 @@ jobs:
             exit 1
           fi
 
+  bump-tests:
+    name: bump regression suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Every manager the script drives is stubbed, so this needs nothing
+      # installed beyond bash, coreutils and python3 — all present on the runner.
+      - name: run the suite
+        run: tests/bump.test.sh
+
   markdownlint:
     name: markdownlint
     runs-on: ubuntu-latest

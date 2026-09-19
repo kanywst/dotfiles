@@ -33,6 +33,11 @@ pre-push:
     actionlint:
       glob: ".github/workflows/*.{yml,yaml}"
       run: actionlint {push_files}
+    bump-tests:
+      # ~15s. Pre-push rather than pre-commit: the suite forks a run of bump per
+      # assertion, which is too slow to sit in front of every commit.
+      glob: "bin/.local/bin/bump"
+      run: tests/bump.test.sh
     flake-check:
       glob: "flake.{nix,lock}"
       run: nix flake check --no-build

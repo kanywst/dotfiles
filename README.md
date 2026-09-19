@@ -187,11 +187,12 @@ mise run darwin-switch  # darwin-rebuild switch
 mise run bootstrap      # install non-brew layers (mise/rustup/krew/gh ext)
 mise run hooks          # lefthook install (writes .git/hooks/*)
 mise run scan           # gitleaks detect on the full tree
+mise run test           # bump regression suite, under bash 5 and bash 3.2
 ```
 
 `lefthook.yml` runs zsh-syntax, shellcheck, markdownlint, and
-`gitleaks protect --staged` on pre-commit; `actionlint` + `nix flake check`
-on pre-push.
+`gitleaks protect --staged` on pre-commit; `actionlint`, `nix flake check` and
+the `bump` regression suite on pre-push.
 
 ### 6. Local secrets
 
@@ -406,7 +407,7 @@ per-user managers nix doesn't own are bumped alongside it.
 Steps run in two phases. The ordered, root-hungry ones go first and serially
 (`flake` → `darwin` → `brew` → `brew-cask`); everything after that is
 independent, so it runs concurrently and each result prints the moment that
-tool finishes. Output goes to `~/.cache/bump/<timestamp>/<step>.log` rather
+tool finishes. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rather
 than the screen — a failing step gets its log tail printed inline, and the last
 20 runs are kept.
 
@@ -429,6 +430,14 @@ themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
 
 [cargo-update]: https://github.com/nabijaczleweli/cargo-update
 [gup]: https://github.com/nao1215/gup
+
+`tests/bump.test.sh` is the regression suite: every assertion there is a bug
+that actually shipped. It stubs every manager onto a temp `PATH` and redirects
+`XDG_CACHE_HOME` / `DOTFILES_DIR`, so it touches nothing real and needs no
+network. It runs on pre-push, in CI, and via `mise run test` — which runs it
+twice, the second time under `/bin/bash`, because macOS's bash 3.2 is what
+`#!/usr/bin/env bash` finds on a fresh Mac and it is stricter about empty
+arrays under `set -u`.
 
 Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). Output is captured to a log rather than the screen, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 
