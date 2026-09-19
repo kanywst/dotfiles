@@ -413,6 +413,77 @@ assert_contains "verbose streams the command's own output" "$OUT" "mise says hel
 # Concurrent live output is unreadable, so verbose has to force serial.
 assert_missing "verbose runs serially" "$OUT" "in parallel:"
 
+# --- the slow paths -------------------------------------------------------
+# Two branches that a normal run never reaches: the sudo keep-alive only
+# refreshes after 60s, and the watchdog's SIGKILL only lands 30s after its
+# SIGTERM is ignored. Both were shipped untested because "no real run is long
+# enough". They are perfectly testable with a stub that sleeps, just slowly, so
+# they are opt-in — BUMP_TEST_SLOW=1, about two and a half minutes.
+if [[ "${BUMP_TEST_SLOW:-}" == 1 ]]; then
+    # macOS expires a sudo timestamp after ~5 minutes, and `brew upgrade --cask`
+    # reached a Pkg cask ~25 minutes into a run — so the grant is refreshed every
+    # 60s in the background. If that loop is broken the refresh never happens and
+    # the late sudo prompts invisibly behind a spinner, which is the original hang.
+    reset_stubs
+    stub sudo "date +%s >>\"$TMP/sudo-times\"; exit 0"
+    stub brew 'sleep 45'
+    rm -f "$TMP/sudo-times"
+    run BUMP_TIMEOUT=300 -- --only brew,brew-cask
+    # The cadence is the property, not the count: a broken loop can still call
+    # sudo a few times while never actually refreshing on schedule. Measured on
+    # a 7-minute run the gaps were 60, 60, 60, 60, 60, 60, 61.
+    _gap=$(awk 'NR>1 && $1-p > m { m = $1-p } { p = $1 } END { print m+0 }' "$TMP/sudo-times" 2>/dev/null)
+    _n=$(wc -l <"$TMP/sudo-times" 2>/dev/null | tr -d ' ')
+    if [[ "${_n:-0}" -ge 4 && "${_gap:-999}" -le 75 ]]; then
+        ok "the sudo grant is refreshed on a 60s cadence ($_n calls, largest gap ${_gap}s)"
+    else
+        bad "the sudo keep-alive did not hold its cadence: $_n calls, largest gap ${_gap}s"
+    fi
+    # The keep-alive's `sleep 60` used to outlive the run by up to a minute.
+    if pgrep -f 'sleep 60' >/dev/null 2>&1; then
+        bad "a keep-alive sleep outlived the run"
+    else
+        ok "the keep-alive leaves no sleep behind"
+    fi
+
+    # timeout sends TERM, which a step can ignore; -k escalates to KILL 30s
+    # later. Without it a step that traps TERM outlives its own watchdog, which
+    # is the hang the watchdog exists to end.
+    if $HAVE_TIMEOUT; then
+        reset_stubs
+        # `trap "" TERM; sleep 600` does NOT survive: timeout signals the whole
+        # process group, and the sleep child does not ignore TERM, so the stub
+        # returns immediately and the -k escalation is never exercised. The loop
+        # form survives because the shell ignoring TERM is the one that persists.
+        stub gh 'trap "" TERM; while :; do sleep 1; done'
+        _t0=$SECONDS
+        run BUMP_TIMEOUT=2 -- --only gh
+        _took=$((SECONDS - _t0))
+        assert_contains "a step that ignores SIGTERM is reported as killed, not just failed" \
+            "$OUT" "ignored the 2s timeout, SIGKILLed"
+        # 2s watchdog + 30s kill-after. Under 25s means TERM alone ended it and
+        # the escalation went untested; over 90s means nothing killed it.
+        if ((_took >= 25 && _took < 90)); then
+            ok "the watchdog escalates to SIGKILL after its TERM is ignored (${_took}s)"
+        else
+            bad "the SIGKILL escalation did not happen as expected: the run took ${_took}s"
+        fi
+        # The runner has to survive TERM for the kill-after to fire at all, but
+        # it must not make its CHILDREN survive it: `trap ''` is inherited across
+        # exec and made every ordinary step sit out the full 30s for nothing.
+        reset_stubs
+        stub gh 'sleep 600'
+        _t0=$SECONDS
+        run BUMP_TIMEOUT=2 -- --only gh
+        _took=$((SECONDS - _t0))
+        if ((_took < 15)); then
+            ok "a step that respects SIGTERM pays no kill-after penalty (${_took}s)"
+        else
+            bad "an ordinary step waited out the kill-after: ${_took}s"
+        fi
+    fi
+fi
+
 # --- the summary ----------------------------------------------------------
 reset_stubs
 # shellcheck disable=SC2016  # literal $1 for the stub, not for us.

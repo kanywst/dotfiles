@@ -442,7 +442,9 @@ that actually shipped. It stubs every manager onto a temp `PATH` and redirects
 network. It runs on pre-push, in CI, and via `mise run test` — which runs it
 twice, the second time under `/bin/bash`, because macOS's bash 3.2 is what
 `#!/usr/bin/env bash` finds on a fresh Mac and it is stricter about empty
-arrays under `set -u`.
+arrays under `set -u`. `BUMP_TEST_SLOW=1` adds the two branches a normal run
+never reaches — the sudo keep-alive's 60-second refresh and the watchdog's
+SIGKILL escalation — for about two and a half minutes more.
 
 Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). Output is captured to a log rather than the screen, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 

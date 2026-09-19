@@ -439,7 +439,9 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 `DOTFILES_DIR` も逃がすので、実機には一切触らないしネットワークも要らない。
 pre-push と CI と `mise run test` で走る。`mise run test` は 2 回走らせる —
 2 回目は `/bin/bash` で、fresh Mac の `#!/usr/bin/env bash` が掴むのは macOS
-同梱の bash 3.2 で、`set -u` 下の空配列に厳しいから。
+同梱の bash 3.2 で、`set -u` 下の空配列に厳しいから。`BUMP_TEST_SLOW=1` を付けると
+通常の run では到達しない 2 本 (sudo キープアライブの 60 秒リフレッシュと watchdog の
+SIGKILL 昇格) も回る。2 分半ほど追加でかかる。
 
 各ステップには watchdog が付く (`BUMP_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。出力は画面ではなくログに入るので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
 
