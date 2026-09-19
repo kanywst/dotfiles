@@ -3,11 +3,18 @@
     "anomalyco/tap/opencode",
     "charmbracelet/tap/crush",
     "charmbracelet/tap/vhs",
+    "hashicorp/tap/terraform",
     "kanywst/tap/approval-hub",
+    "kanywst/tap/mcp-opa-authz",
+    "kanywst/tap/wtfi2",
+    "kanywst/tap/wtfi3",
     "ory/tap/cli",
-    "oven-sh/bun/bun"
+    "oven-sh/bun/bun",
+    "tursodatabase/tap/turso"
   ],
   "trustedcasks": [
+    "kanywst/tap/brtc",
+    "kanywst/tap/prpr",
     "kanywst/tap/y509",
     "nikitabobko/tap/aerospace"
   ]
