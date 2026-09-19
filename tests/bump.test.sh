@@ -218,6 +218,73 @@ run -- --only npm
 assert_missing "no sudo prompt when no selected step needs root" "$OUT" "warming sudo"
 if [[ -e "$TMP/sudo-called" ]]; then bad "--only npm never invokes sudo"; else ok "--only npm never invokes sudo"; fi
 
+# Three distinct outcomes, and they used to collapse into one message. Both
+# branches below are forced deterministically rather than depending on whether
+# the suite happens to have a controlling terminal.
+if command -v python3 >/dev/null 2>&1; then
+    # (1) No controlling terminal: sudo cannot prompt, and its own error is
+    # "a terminal is required to read the password". Calling that "not
+    # authorized" sends the reader to check sudoers for nothing. Hit for real
+    # by running bump from a shell that captured its output.
+    reset_stubs
+    # shellcheck disable=SC2016  # literal $1 for the stub: it inspects its own arg.
+    stub sudo 'if [ "$1" = "-n" ]; then exit 1; fi
+echo "sudo: a terminal is required to read the password" >&2; exit 1'
+    cat >"$TMP/nosid.py" <<'NOSID'
+import os, sys
+os.setsid()                      # drop the controlling terminal, then run
+os.execvp(sys.argv[1], sys.argv[1:])
+NOSID
+    OUT=$(env -i PATH="$STUB:$SYSBIN" HOME="$TMP" TERM=dumb \
+        XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data" \
+        RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=5 \
+        python3 "$TMP/nosid.py" "$SHELL_UNDER_TEST" "$BUMP" --only darwin,brew \
+        </dev/null 2>&1 | sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g')
+    assert_contains "no controlling terminal is reported as such" "$OUT" "no terminal to ask for a password on"
+    assert_missing "no controlling terminal is not called an authorization failure" "$OUT" "not authorized"
+    assert_contains "no controlling terminal still runs the steps that need no root" "$OUT" "🍺 homebrew formulae ("
+
+    # (2) A terminal exists and sudo refuses: that IS an authorization failure.
+    reset_stubs
+    stub sudo 'exit 1'
+    cat >"$TMP/sudorun.sh" <<SUDORUN
+export PATH="$STUB:$SYSBIN" HOME="$TMP" TERM=dumb
+export XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
+export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=5
+"$SHELL_UNDER_TEST" "$BUMP" --only darwin,brew
+SUDORUN
+    cat >"$TMP/ptyplain.py" <<'PTY'
+import os, pty, select, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash"] + sys.argv[1:])
+    os._exit(1)
+out = b""
+while True:
+    try:
+        r, _, _ = select.select([fd], [], [], 30)
+        if not r:
+            break
+        d = os.read(fd, 65536)
+        if not d:
+            break
+        out += d
+    except OSError:
+        break
+os.waitpid(pid, 0)
+sys.stdout.write(out.decode(errors="replace"))
+PTY
+    OUT=$(python3 "$TMP/ptyplain.py" "$TMP/sudorun.sh" 2>/dev/null \
+        | tr -d '\r' | sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g')
+    assert_contains "a refusal with a terminal present is an authorization failure" "$OUT" "not authorized"
+    assert_missing "a refusal with a terminal present is not blamed on the terminal" "$OUT" "no terminal to ask"
+fi
+
+# (3) An already-warm sudo timestamp needs no prompt and should not print one.
+reset_stubs
+run -- --only darwin
+assert_missing "an already-warm sudo grant prints no prompt line" "$OUT" "warming sudo"
+
 reset_stubs
 stub sudo "touch \"$TMP/sudo-called\"; exit 1"   # grant refused
 run -- --skip flake
