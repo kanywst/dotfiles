@@ -42,7 +42,7 @@ exec zsh -l
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
 - aichat: multi-model LLM CLI in the shell
-- `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh) with gum spinners
+- `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - AeroSpace: i3-like tiling WM (no SIP disable)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
@@ -401,19 +401,36 @@ cd <repo> && jj git init --colocate
 `bump` (in the `bin` stow package, linked to `~/.local/bin/bump`) bumps
 everything in one run. This box is nix-darwin declarative, so the system path is
 `nix flake update` + `darwin-rebuild switch` — not a bare `brew upgrade`; the
-per-user managers nix doesn't own are bumped alongside it. Output is hidden
-behind a gum spinner per step and only surfaces on failure.
+per-user managers nix doesn't own are bumped alongside it.
+
+Steps run in two phases. The ordered, root-hungry ones go first and serially
+(`flake` → `darwin` → `brew` → `brew-cask`); everything after that is
+independent, so it runs concurrently and each result prints the moment that
+tool finishes. Output goes to `~/.cache/bump/<timestamp>/<step>.log` rather
+than the screen — a failing step gets its log tail printed inline, and the last
+20 runs are kept.
 
 | Cmd | Action |
 | --- | --- |
-| `bump` | update everything: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
-| `bump -v` | same, but stream every command's output live |
+| `bump` | update everything: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
+| `bump -n` | show the plan and what would be skipped, run nothing |
+| `bump --only nix,brew` | run only these steps |
+| `bump --skip atuin` | run everything except these |
+| `bump -l` | list the step names |
+| `bump -v` | stream every command's output live (forces serial) |
 | `bump -h` | help |
 
-Sudo is requested once up front (for the nix-darwin switch). `cargo`/`go`
-binaries are intentionally left alone — no clean bulk-updater is installed.
+Sudo is requested once up front, and only when a selected step actually needs
+it — `bump --only npm` never prompts. If the grant doesn't take, the steps that
+need root (`darwin`, `brew-cask`) are skipped cleanly and the rest still run.
 
-Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). The spinner hides a step's output, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its bump through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
+`cargo`/`go` binaries are covered by the `cargo` and `gup` steps, which skip
+themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
+
+[cargo-update]: https://github.com/nabijaczleweli/cargo-update
+[gup]: https://github.com/nao1215/gup
+
+Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). Output is captured to a log rather than the screen, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 
 ### Key bindings
 

@@ -42,7 +42,7 @@ exec zsh -l
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
 - aichat: シェル上のマルチモデル LLM CLI
-- `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh)、gum スピナー付き
+- `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - AeroSpace: i3 ライクなタイル型 WM (SIP 無効化不要)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
@@ -401,19 +401,35 @@ cd <repo> && jj git init --colocate
 `bump` (`bin` stow パッケージ、`~/.local/bin/bump` にリンク) で全部まとめて上げる。
 このマシンは nix-darwin の宣言的構成なので、システムの正規経路は `brew upgrade`
 単体ではなく `nix flake update` + `darwin-rebuild switch`。nix が管理しないユーザー
-領域のマネージャもこれに合わせて更新する。各ステップの出力は gum スピナーの裏に隠れ、
-失敗したときだけ表示される。
+領域のマネージャもこれに合わせて更新する。
+
+ステップは 2 フェーズ。順序と root が要るものが先に直列で走り
+(`flake` → `darwin` → `brew` → `brew-cask`)、それ以降は互いに独立なので並列に走って
+終わったものから順に結果が出る。出力は画面ではなく
+`~/.cache/bump/<timestamp>/<step>.log` に入り、失敗したステップだけログ末尾が
+その場に表示される。直近 20 回分を保持。
 
 | Cmd | 動作 |
 | --- | --- |
-| `bump` | 全部更新: nix-darwin → brew → rustup → mise → npm-g → krew → gh ext → atuin |
-| `bump -v` | 同上、各コマンドの出力をライブ表示 |
+| `bump` | 全部更新: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
+| `bump -n` | 実行計画と skip 理由だけ表示、何も実行しない |
+| `bump --only nix,brew` | 指定ステップだけ実行 |
+| `bump --skip atuin` | 指定ステップ以外を実行 |
+| `bump -l` | ステップ名一覧 |
+| `bump -v` | 各コマンドの出力をライブ表示 (直列になる) |
 | `bump -h` | ヘルプ |
 
-sudo は最初に一度だけ要求 (nix-darwin switch 用)。`cargo`/`go` バイナリは一括更新
-手段が無いので意図的に対象外。
+sudo は最初に一度だけ、しかも **root が要るステップが選ばれているときだけ** 要求する
+(`bump --only npm` は聞かない)。権限が取れなかった場合は `darwin` / `brew-cask` を
+綺麗に skip して残りは走らせる。
 
-各ステップには watchdog が付く (`BUMP_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。spinner がステップの出力を隠すので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
+`cargo`/`go` バイナリは `cargo` / `gup` ステップが面倒を見る。
+[`cargo-update`][cargo-update] / [`gup`][gup] が入っていなければ自分で skip する。
+
+[cargo-update]: https://github.com/nabijaczleweli/cargo-update
+[gup]: https://github.com/nao1215/gup
+
+各ステップには watchdog が付く (`BUMP_TIMEOUT`、デフォルト `1800` 秒、`0` で無効)。出力は画面ではなくログに入るので、ハングは画面上「何も起きない」に見える。上限を設けることで、静かに 1 時間溶かす代わりに 1 ステップの失敗として扱い、残りのステップはそのまま走る。coreutils の `timeout(1)` が必要 (そのために Brewfile に宣言してある)。無い場合は警告を出したうえで上限なしで走る。nix-darwin ステップは `sudo` 越しに動くので、watchdog は run を解放できても root 側の子プロセスまでは殺せない。
 
 ### キーバインド
 
