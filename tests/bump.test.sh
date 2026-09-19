@@ -45,6 +45,12 @@ assert_missing() {
 $2" ;; *) ok "$1" ;; esac
 }
 assert_eq() { if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1" "expected [$3], got [$2]"; fi; }
+# For shapes that padding makes brittle to match literally.
+assert_matches() {
+    if printf '%s' "$2" | grep -qE "$3"; then ok "$1"; else bad "$1" "expected to match: $3
+--- got ---
+$2"; fi
+}
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/bump-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -242,7 +248,7 @@ NOSID
         </dev/null 2>&1 | sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g')
     assert_contains "no controlling terminal is reported as such" "$OUT" "no terminal to ask for a password on"
     assert_missing "no controlling terminal is not called an authorization failure" "$OUT" "not authorized"
-    assert_contains "no controlling terminal still runs the steps that need no root" "$OUT" "🍺 homebrew formulae ("
+    assert_matches "no controlling terminal still runs the steps that need no root" "$OUT" '✓.*homebrew formulae' 
 
     # (2) A terminal exists and sudo refuses: that IS an authorization failure.
     reset_stubs
@@ -292,7 +298,7 @@ assert_contains "refused sudo skips the nix-darwin step" "$OUT" "nix-darwin swit
 # The cask upgrade is the step that actually needs root mid-run. Unguarded, it
 # sat on an invisible password prompt until the watchdog killed it 30min later.
 assert_contains "refused sudo skips the cask step" "$OUT" "homebrew casks — skipped (needs sudo)"
-assert_contains "refused sudo still runs the formula step" "$OUT" "🍺 homebrew formulae ("
+assert_matches "refused sudo still runs the formula step" "$OUT" '✓.*homebrew formulae' 
 
 # --- failures, timeouts, exit codes ---------------------------------------
 reset_stubs
@@ -325,7 +331,10 @@ stub sudo 'exit 1'
 run --
 assert_contains "a run where everything skipped is not 'all done'" "$OUT" "nothing to do"
 assert_eq "a run that did nothing still exits 0" "$RC" "0"
-assert_contains "the empty summary lists are an em dash" "$OUT" "updated: —"
+# Empty lists are omitted now rather than printed as rows of em dashes, so a
+# run that did nothing says what it skipped and nothing else.
+assert_contains "a run that did nothing still names what it skipped" "$OUT" "skipped  "
+assert_missing "a run with no failures prints no failed line" "$OUT" "failed  "
 
 reset_stubs
 run -- --only npm,gh
@@ -403,6 +412,92 @@ run -- -v --only mise,npm
 assert_contains "verbose streams the command's own output" "$OUT" "mise says hello"
 # Concurrent live output is unreadable, so verbose has to force serial.
 assert_missing "verbose runs serially" "$OUT" "in parallel:"
+
+# --- the summary ----------------------------------------------------------
+reset_stubs
+# shellcheck disable=SC2016  # literal $1 for the stub, not for us.
+stub brew 'case "$1" in update) sleep 3;; esac; exit 0'   # one slow step
+run -- --skip flake,darwin,brew-cask
+# The chart replaced a comma-joined list of a dozen names in which the one step
+# that took 14 of the run's 21 seconds was indistinguishable from the eleven
+# that took none.
+assert_matches "a slow step gets a bar scaled to the slowest" "$OUT" 'homebrew formulae +█+ +[0-9]+s'
+assert_matches "sub-second steps collapse into one line" "$OUT" '\+[0-9]+ more +under 1s'
+assert_missing "the chart replaces the updated-names line" "$OUT" "updated  homebrew"
+
+# Whether every step lands under a second depends on process spawn time, so the
+# testable invariant is that the two presentations never appear together: bars,
+# or the names, never both.
+reset_stubs
+run -- --only mise,npm
+if printf '%s' "$OUT" | grep -q '█'; then
+    assert_missing "a charted summary does not also list the names" "$OUT" "updated  mise"
+else
+    assert_contains "an uncharted summary names them instead" "$OUT" "updated  mise, npm globals"
+fi
+
+# .last lives in the cache root and outlives reset_stubs, so clear it here or
+# the "first run" is never the first.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+run -- --only mise
+assert_missing "the first run reports no previous one" "$OUT" "last run"
+run -- --only mise
+assert_contains "a later run reports how long since the last" "$OUT" "last run"
+
+# --- the box fits the terminal --------------------------------------------
+# Reported from a real run: with twelve steps named on one line the summary box
+# was ~160 columns, overflowed a narrower terminal and came out as broken
+# border fragments. gum sizes a box to its longest line and does not wrap.
+if command -v python3 >/dev/null 2>&1 && command -v gum >/dev/null 2>&1; then
+    cat >"$TMP/ptywide.py" <<'WIDE'
+import os, pty, select, sys, fcntl, termios, struct
+cols = int(sys.argv[1])
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash"] + sys.argv[2:])
+    os._exit(1)
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, cols, 0, 0))
+out = b""
+while True:
+    try:
+        r, _, _ = select.select([fd], [], [], 30)
+        if not r:
+            break
+        d = os.read(fd, 65536)
+        if not d:
+            break
+        out += d
+        for p, rep in ((b"\x1b[?2026$p", b"\x1b[?2026;2$y"),
+                       (b"\x1b[?2027$p", b"\x1b[?2027;2$y")):
+            for _ in range(d.count(p)):
+                os.write(fd, rep)
+    except OSError:
+        break
+os.waitpid(pid, 0)
+sys.stdout.write(out.decode(errors="replace"))
+WIDE
+    cat >"$TMP/widerun.sh" <<WIDERUN
+sleep 0.5
+export PATH="$STUB:\$(dirname "\$(command -v gum)"):$SYSBIN"
+export HOME="$TMP" TERM=xterm-256color
+export XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
+export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=20
+"$SHELL_UNDER_TEST" "$BUMP"
+WIDERUN
+    reset_stubs
+    for _cols in 50 100; do
+        _w=$(python3 "$TMP/ptywide.py" "$_cols" "$TMP/widerun.sh" 2>/dev/null \
+            | tr -d '\r' | sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' \
+            | grep -E '^[╭╰╔╚]' \
+            | python3 -c 'import sys; print(max((len(l.rstrip("\n")) for l in sys.stdin), default=0))')
+        if [[ "${_w:-0}" -gt 0 && "${_w:-0}" -le "$_cols" ]]; then
+            ok "the summary box fits a ${_cols}-column terminal (${_w} cells)"
+        else
+            bad "the summary box is ${_w:-?} cells in a ${_cols}-column terminal"
+        fi
+    done
+fi
 
 # --- the terminal-probe leak ----------------------------------------------
 # `gum spin` ends by asking the terminal about synchronized output (DECRQM

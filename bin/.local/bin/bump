@@ -244,7 +244,7 @@ g_krew() {
 g_atuin() { have atuin || _missing atuin; }
 
 # ---- plan ----------------------------------------------------------------
-declare -a DONE=() FAILED=() SKIPPED=()
+declare -a DONE=() DONE_SECS=() FAILED=() SKIPPED=()
 declare -a SEL_NAME=() SEL_EMOJI=() SEL_LABEL=() SEL_SPIN=() SEL_PHASE=() SEL_SUDO=()
 SUDO_OK=true       # flipped to false below if the up-front `sudo -v` fails.
 SUDO_NEEDED=false  # only prompt when a selected step actually wants root.
@@ -331,7 +331,7 @@ build_runner() {
     fi
 }
 
-tag() { printf '[%d/%d]' "$1" "${#SEL_NAME[@]}"; }
+tag() { printf '%-*s' "$TAG_W" "$(printf '[%d/%d]' "$1" "${#SEL_NAME[@]}")"; }
 
 # `gum spin` ends by asking the terminal whether it supports synchronized output
 # and grapheme clustering — DECRQM `\e[?2026$p` and `\e[?2027$p`, verifiably the
@@ -378,8 +378,8 @@ say_result() { # idx emoji label rc secs log
     # of order, so the tag has to be on the result line itself.
     t=$(tag "$idx")
     if ((rc == 0)); then
-        printf '%s  ✓%s %s %s %s %s(%ds)%s\n' "$G" "$X" "$t" "$emoji" "$label" "$D" "$dt" "$X"
-        DONE+=("$label"); return
+        printf '%s  ✓%s %s %s %-19s%s(%ds)%s\n' "$G" "$X" "$t" "$emoji" "$label" "$D" "$dt" "$X"
+        DONE+=("$label"); DONE_SECS+=("$dt"); return
     fi
     FAILED+=("$label")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]] && ((rc == 124)); then
@@ -539,11 +539,34 @@ join_with() { # sep item...
 }
 
 # ---- chrome --------------------------------------------------------------
+# gum style sizes a box to its longest line and does not wrap, so a summary
+# naming a dozen updated steps rendered a ~160-column box that folded over
+# itself and came out as broken border fragments. `--width` is the total
+# rendered width, borders included, and makes lipgloss wrap inside it.
+# tput needs a terminal; falling back to 80 is what keeps the box intact when
+# the output is being captured rather than displayed.
+# stty first, deliberately. `$(tput cols)` puts tput's stdout on a pipe, so it
+# cannot query the terminal and quietly answers with terminfo's default of 80 —
+# measured returning 80 in a 60-column pty, which is how the box stayed too wide
+# the first time this was "fixed". `stty size </dev/tty` reads the real winsize.
+box_width() {
+    local c
+    c=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2)
+    [[ "$c" =~ ^[0-9]+$ ]] || c=$(tput cols 2>/dev/null)
+    [[ "$c" =~ ^[0-9]+$ ]] || c="${COLUMNS:-}"
+    [[ "$c" =~ ^[0-9]+$ ]] || c=80
+    ((c > 100)) && c=100
+    ((c < 40)) && c=40
+    printf '%s' "$c"
+}
+
 banner() {
     if $HAS_GUM && ! $VERBOSE; then
+        local w; w=$(box_width)
+        ((w > 48)) && w=48
         gum style --border double --border-foreground 212 \
             --foreground 213 --bold --align center \
-            --padding "1 6" --margin "1 0" --width 48 \
+            --padding "1 6" --margin "1 0" --width "$w" \
             "⚡  B U M P  ⚡" "" "let's get you up to date"
         printf '%s   %s · %s%s\n' "$D" "$(hostname -s)" "$(date '+%a %d %b %H:%M')" "$X"
     else
@@ -551,15 +574,68 @@ banner() {
     fi
 }
 
+# The slowest step is the only one worth knowing about, and a run that names a
+# dozen updated managers in one comma-joined line buries it. Bars, sorted, turn
+# "what happened" into "where the time went" — 11s of homebrew next to 1s of
+# everything else — and they replace the updated-names line rather than adding
+# to it, since each bar already carries its name.
+duration_chart() {
+    local width=$1 i max=0 barw secs label bar n fast=0
+    ((${#DONE[@]} == 0)) && return 0
+    for i in "${!DONE_SECS[@]}"; do ((DONE_SECS[i] > max)) && max=${DONE_SECS[i]}; done
+
+    # Nothing took a measurable second: a column of empty bars reading "0s"
+    # twelve times is worse than one line naming them, so fall back to that.
+    if ((max < 1)); then
+        printf '%supdated%s  %s\n' "$C" "$X" "$(join_with ', ' ${DONE[@]+"${DONE[@]}"})"
+        return 0
+    fi
+
+    barw=$((width - 34))
+    ((barw < 8)) && barw=8
+    ((barw > 34)) && barw=34
+    # `sort` rather than a bash sort: 3.2 has no associative arrays to sort by
+    # value, and this has to run there.
+    while IFS=$'\t' read -r secs label; do
+        [[ -n "$label" ]] || continue
+        # Sub-second steps are the boring majority; collapse them into a count
+        # instead of spending a row each on a bar that rounds to nothing.
+        if ((secs < 1)); then fast=$((fast + 1)); continue; fi
+        n=$((secs * barw / max)); ((n < 1)) && n=1
+        bar=$(printf '%*s' "$n" '' | tr ' ' '#')
+        printf '%s%-18s%s %s%s%s %s%4ds%s\n' \
+            "$C" "$label" "$X" "$G" "${bar//#/█}" "$X" "$D" "$secs" "$X"
+    done < <(
+        for i in "${!DONE[@]}"; do printf '%s\t%s\n' "${DONE_SECS[$i]}" "${DONE[$i]}"; done | sort -rn
+    )
+    ((fast > 0)) && printf '%s%-18s %s%s\n' "$D" "+$fast more" "under 1s" "$X"
+    return 0
+}
+
+# Portable "how long since the last run": a marker file holding epoch seconds,
+# because `date -d` (GNU) and `date -r` (BSD) disagree and the log directory
+# names would have to be parsed back into a timestamp otherwise.
+since_last_run() {
+    local last now d
+    last=$(cat "$LOG_ROOT/.last" 2>/dev/null)
+    [[ "$last" =~ ^[0-9]+$ ]] || return 0
+    now=$(date +%s); d=$((now - last))
+    ((d < 0)) && return 0
+    if   ((d < 90));    then printf 'just now'
+    elif ((d < 5400));  then printf '%dm ago' $((d / 60))
+    elif ((d < 172800)); then printf '%dh ago' $((d / 3600))
+    else                     printf '%dd ago' $((d / 86400))
+    fi
+}
+
 summary() {
     local elapsed=$1
-    local dn sk fl counts
+    local sk fl counts
     # `${a[@]+"${a[@]}"}`, not a plain `"${a[@]}"`: macOS still ships bash 3.2 at
     # /bin/bash, where expanding an EMPTY array under `set -u` is an unbound
     # variable error. These three are the only expansions here that can be empty
     # (every other one is behind a count check), and on a fresh Mac — before
     # homebrew puts bash 5 on PATH — /bin/bash is exactly what runs this.
-    dn=$(join_with ', ' ${DONE[@]+"${DONE[@]}"})
     sk=$(join_with ', ' ${SKIPPED[@]+"${SKIPPED[@]}"})
     fl=$(join_with ', ' ${FAILED[@]+"${FAILED[@]}"})
     counts=$(printf '✅ %d updated   💤 %d skipped   ❌ %d failed' \
@@ -567,25 +643,35 @@ summary() {
 
     # "all done" for a run where every step was skipped is how a PATH accident
     # reads as success. Say what actually happened instead.
-    local head color=84
+    local head color=84 ago
+    ago=$(since_last_run)
+    [[ -n "$ago" ]] && ago="  ·  last run $ago"
     if ((${#FAILED[@]})); then
-        head="💥  finished with errors  ·  ${elapsed}s"; color=203
+        head="💥  finished with errors  ·  ${elapsed}s${ago}"; color=203
     elif ((${#DONE[@]} == 0)); then
-        head="🤷  nothing to do  ·  ${elapsed}s"; color=244
+        head="🤷  nothing to do  ·  ${elapsed}s${ago}"; color=244
     else
-        head="🎉  all done  ·  ${elapsed}s"
+        head="🎉  all done  ·  ${elapsed}s${ago}"
     fi
+
+    # Only the lists that carry information: the chart names everything that
+    # ran, so an "updated" line would repeat it, and empty skipped/failed lines
+    # are three rows of em dashes saying nothing happened.
+    local -a rows=("$head" "" "$counts")
+    if ((${#DONE[@]})); then
+        rows+=("")
+        local l
+        while IFS= read -r l; do rows+=("$l"); done < <(duration_chart "$(box_width)")
+    fi
+    ((${#SKIPPED[@]})) && rows+=("" "${D}skipped  $sk${X}")
+    ((${#FAILED[@]}))  && rows+=("${R}failed   $fl${X}")
 
     if $HAS_GUM && ! $VERBOSE; then
         gum style --border rounded --border-foreground "$color" \
-            --padding "1 3" --margin "1 0" \
-            "$head" "" "$counts" \
-            "${C}updated${X}  $dn" \
-            "${D}skipped  $sk${X}" \
-            "${R}failed   $fl${X}"
+            --padding "1 3" --margin "1 0" --width "$(box_width)" "${rows[@]}"
     else
-        printf '\n%s── %s ──%s\n%s\n' "$P" "$head" "$X" "$counts"
-        printf '  updated: %s\n  skipped: %s\n  failed:  %s\n' "$dn" "$sk" "$fl"
+        printf '\n%s── %s ──%s\n' "$P" "$head" "$X"
+        printf '%s\n' "${rows[@]:2}"
     fi
     printf '%s  · logs: %s%s\n' "$D" "$LOG_DIR" "$X"
 }
@@ -599,7 +685,7 @@ prune_logs() {
     while IFS= read -r d; do
         n=$((n + 1))
         ((n > 20)) && rm -rf "$d"
-    done < <(ls -1dt "$LOG_ROOT"/*/ 2>/dev/null)
+    done < <(ls -1dt "$LOG_ROOT"/*/ 2>/dev/null)   # trailing / == directories only
     return 0
 }
 
@@ -650,6 +736,7 @@ done
 [[ -n "$ONLY" ]] && validate_names --only "$ONLY"
 [[ -n "$SKIP" ]] && validate_names --skip "$SKIP"
 build_plan
+TAG_W=$(( ${#SEL_NAME[@]} > 9 ? 7 : 5 ))   # width of "[12/12]" vs "[9/9]"
 ((${#SEL_NAME[@]} == 0)) && { printf '%sno steps selected%s\n' "$R" "$X" >&2; exit 2; }
 
 banner
@@ -749,6 +836,7 @@ done
 ((${#PAR_IDX[@]})) && run_parallel
 
 summary $((SECONDS - start))
+date +%s >"$LOG_ROOT/.last" 2>/dev/null
 prune_logs
 # Once more at the end: the per-spinner drain above is the fix, this is the
 # guard against a future gum learning to probe from somewhere else. Whatever it

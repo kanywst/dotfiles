@@ -411,6 +411,11 @@ tool finishes. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rathe
 than the screen — a failing step gets its log tail printed inline, and the last
 20 runs are kept.
 
+The summary ranks the steps that ran by how long they took, so the one that ate
+most of the wall clock is obvious rather than buried in a list of a dozen names;
+anything under a second collapses into a single count. The box is sized to the
+terminal, since gum grows a box to its longest line and does not wrap.
+
 | Cmd | Action |
 | --- | --- |
 | `bump` | update everything: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
