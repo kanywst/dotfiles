@@ -58,3 +58,11 @@ keybind = cmd+shift+right=next_tab
 
 # Misc
 keybind = cmd+k=clear_screen
+
+# ---------- updates ----------
+# Ghostty 1.3 can update itself on macOS without Homebrew, which breaks the
+# "flake.nix declares the bundle" rule: on 2026-09-19 the app had reached 1.3.1
+# on its own while `brew list --cask --versions ghostty` still said 1.2.3 — the
+# declared state and the real state had silently diverged. Pin updates to brew
+# so `mise run darwin-switch` / `brew upgrade --cask` stays the only path in.
+auto-update = off
