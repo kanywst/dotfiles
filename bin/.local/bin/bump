@@ -233,13 +233,15 @@ g_krew() {
     kubectl krew version >/dev/null 2>&1 || { SKIP_REASON="krew plugin not installed"; return 1; }
 }
 
-# `atuin sync` needs a logged-in session; without one it fails on every run and
-# the failure is indistinguishable from a real sync error.
-g_atuin() {
-    have atuin || { _missing atuin; return 1; }
-    [[ -s "${XDG_DATA_HOME:-$HOME/.local/share}/atuin/session" ]] || {
-        SKIP_REASON="not signed in (atuin login)"; return 1; }
-}
+# Presence only, deliberately. This briefly also required a session file at
+# ${XDG_DATA_HOME}/atuin/session on the theory that a logged-out atuin fails
+# every run — but an Atuin Hub login does not write that file, so the check
+# skipped a step that was working: on this machine there is no session file,
+# `atuin login` reports "You are authenticated with Atuin Hub", and
+# `atuin sync -f` returns 0 and uploads. A missing file I expected is not
+# proof of a missing login. If atuin really is logged out, the step fails and
+# its log tail now says so, which is the visibility that was actually wanted.
+g_atuin() { have atuin || _missing atuin; }
 
 # ---- plan ----------------------------------------------------------------
 declare -a DONE=() FAILED=() SKIPPED=()

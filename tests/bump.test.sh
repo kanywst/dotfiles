@@ -100,8 +100,8 @@ reset_stubs() {
     stub sudo "touch \"$TMP/sudo-called\"; exit 0"
     rm -f "$TMP/sudo-called"
     mkdir -p "$TMP/rustup/toolchains"
-    printf 'session\n' >"$TMP/data/atuin/session" 2>/dev/null \
-        || { mkdir -p "$TMP/data/atuin"; printf 'session\n' >"$TMP/data/atuin/session"; }
+    # No atuin session file is seeded: nothing reads one any more, and having it
+    # here is what made the wrong guard look correct in the first place.
 }
 
 # run [env assignments...] -- <bump args...>; sets $OUT and $RC.
@@ -197,10 +197,13 @@ assert_contains "rustup without toolchains is skipped, not run" "$OUT" "no rustu
 mkdir -p "$TMP/rustup/toolchains"
 
 reset_stubs
-rm -f "$TMP/data/atuin/session"
 run -- --dry-run
-# atuin without a login failed on every run and looked like a sync error.
-assert_contains "atuin without a session is skipped, not run" "$OUT" "not signed in"
+# The inverse of the obvious test, because the obvious one was the bug: a guard
+# that required ${XDG_DATA_HOME}/atuin/session skipped a working step, since an
+# Atuin Hub login does not write that file. Verified on a real machine — no
+# session file, `atuin sync -f` returns 0 and uploads.
+assert_contains "atuin is not skipped just because there is no session file" \
+    "$OUT" "✓ 🐢 atuin sync"
 
 reset_stubs
 rm -f "$TMP/dotfiles/flake.nix"
