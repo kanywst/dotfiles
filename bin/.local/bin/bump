@@ -316,10 +316,25 @@ build_plan() {
 RUNNER=()
 build_runner() {
     local fn="do_${1//-/_}" inner
+    # `trap '' TERM` in the runner, so that `timeout -k` can do its job. timeout
+    # returns as soon as its DIRECT child exits, and this shell is that child:
+    # without the trap it dies on the watchdog's TERM in milliseconds, timeout
+    # returns, and the kill-after never fires — measured, a step that ignored
+    # TERM was correctly reported as timed out while its process went on running
+    # forever as an orphan. With the runner surviving TERM, timeout waits out
+    # its -k window and then SIGKILLs the whole process group. A step that
+    # handles TERM normally still exits at once, so this costs nothing there.
+    # `trap ':'`, NOT `trap ''`: an IGNORED signal is inherited across exec, so
+    # `trap '' TERM` here silently made every child ignore TERM too — a normal
+    # step then survived the watchdog's TERM and sat out the full 30s kill-after
+    # for nothing (measured: 32s for a step that should have died in 2). A
+    # CAUGHT signal is reset to the default in the exec'd child, so only this
+    # shell survives and the steps themselves still die on TERM as they should.
+    local guard="trap ':' TERM; "
     if $VERBOSE; then
-        inner="set -uo pipefail; $fn 2>&1 | tee \"\$BUMP_LOG\""
+        inner="${guard}set -uo pipefail; $fn 2>&1 | tee \"\$BUMP_LOG\""
     else
-        inner="set -uo pipefail; exec >\"\$BUMP_LOG\" 2>&1; $fn"
+        inner="${guard}set -uo pipefail; exec >\"\$BUMP_LOG\" 2>&1; $fn"
     fi
     RUNNER=(bash -c "$inner")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
@@ -384,6 +399,12 @@ say_result() { # idx emoji label rc secs log
     FAILED+=("$label")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]] && ((rc == 124)); then
         printf '%s  ✗ %s %s %s timed out%s %s(%ds — BUMP_TIMEOUT=%ss)%s\n' \
+            "$R" "$t" "$emoji" "$label" "$X" "$D" "$dt" "$BUMP_TIMEOUT" "$X"
+    # 137 is SIGKILL, and past the watchdog's window that is the kill-after
+    # landing on a step that sat through its SIGTERM. Reporting it as a plain
+    # "failed (exit 137)" hides that the watchdog is what ended it.
+    elif ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]] && ((rc == 137)) && ((dt >= BUMP_TIMEOUT)); then
+        printf '%s  ✗ %s %s %s killed%s %s(%ds — ignored the %ss timeout, SIGKILLed)%s\n' \
             "$R" "$t" "$emoji" "$label" "$X" "$D" "$dt" "$BUMP_TIMEOUT" "$X"
     else
         printf '%s  ✗ %s %s %s failed%s %s(%ds — exit %d)%s\n' \
