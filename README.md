@@ -448,6 +448,17 @@ reaches — the sudo keep-alive's 60-second refresh, the watchdog's SIGKILL
 escalation, and the deadline that ends the parallel poll when a child never
 reports — for a few minutes more.
 
+`tests/trust-coverage.sh` is a static check, not part of that suite: it reads
+`flake.nix` and the vendored Homebrew trust store and asserts that every
+third-party `owner/tap/name` appears in both, plus in the `taps` list. It runs
+on pre-commit, in CI and via `mise run test`. It is a backstop rather than a
+live guard — nix-darwin already emits every declared entry as `trusted: true`
+in the Brewfile it generates, so the invariant holds for free today, and this
+is what notices if that ever stops. The failure it descends from (Homebrew 7
+refusing to load an *undeclared* formula from an untrusted tap, which killed
+both the switch and the brew step of one run) is caught by `bump`'s
+`brew_trust_probe` instead, since nothing in the repo can see a hand-install.
+
 `tests/mutation.sh` measures whether that suite is worth anything: it breaks one
 behaviour of `bump` at a time and checks the suite notices. A mutation that
 survives is a hole. It refuses to run against a failing baseline, because on a

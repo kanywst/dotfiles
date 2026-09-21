@@ -24,6 +24,15 @@ pre-commit:
     markdownlint:
       glob: "*.md"
       run: npx --yes markdownlint-cli2 {staged_files}
+    trust-coverage:
+      # Pins the invariant that every third-party entry in flake.nix is also in
+      # the trust store. Today nix-darwin upholds it for free by emitting
+      # `trusted: true` in its Brewfile; this fails loudly if that ever stops.
+      # See the header of the script — it is a backstop, and the untrusted-tap
+      # failure it descends from is caught by bump's probe, not by this.
+      # Static (two file reads, no Homebrew), so pre-commit rather than pre-push.
+      glob: "{flake.nix,homebrew/.config/homebrew/trust.json}"
+      run: tests/trust-coverage.sh
     gitleaks:
       run: gitleaks protect --staged --no-banner --redact
 

@@ -445,6 +445,17 @@ pre-push と CI と `mise run test` で走る。`mise run test` は 2 回走ら�
 SIGKILL 昇格、子が結果を返さないときに並列ポーリングを打ち切るデッドライン) も回る。
 数分追加でかかる。
 
+`tests/trust-coverage.sh` はそのスイートとは別の静的チェック。`flake.nix` と
+vendor した Homebrew trust store を読んで、third-party の `owner/tap/name` が
+両方に (さらに `taps` にも) いることを確認する。pre-commit と CI と
+`mise run test` で走る。ただしこれは backstop であって実効的なガードではない —
+nix-darwin が生成する Brewfile は宣言済みエントリを全部 `trusted: true` で
+書き出すので、この不変条件は今のところタダで成立している。これはそれが崩れたときに
+気づくためのもの。元になった障害 (Homebrew 7 が**未宣言**の formula を untrusted
+tap からロードするのを拒否し、1 回の run で switch と brew ステップを両方殺した)
+の方は `bump` の `brew_trust_probe` が受け持つ。手動インストールはリポジトリ側から
+見えないから。
+
 `tests/mutation.sh` はそのテストに価値があるかを測る。`bump` の挙動を 1 つずつ壊して
 スイートが気づくか見る。生き残ったミューテーションは穴。赤いベースラインの上では
 全ミューテーションが「捕まった」ように見えるので、ベースラインが緑でなければ実行を

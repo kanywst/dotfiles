@@ -24,6 +24,7 @@ description = "Run the bump regression suite (also under macOS's bash 3.2)"
 run = [
     "tests/bump.test.sh",
     "if [ -x /bin/bash ]; then BUMP_TEST_SHELL=/bin/bash tests/bump.test.sh; fi",
+    "tests/trust-coverage.sh",
 ]
 
 [tasks.install]
