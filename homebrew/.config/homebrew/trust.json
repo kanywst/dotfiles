@@ -8,6 +8,7 @@
     "kanywst/tap/mcp-opa-authz",
     "kanywst/tap/wtfi2",
     "kanywst/tap/wtfi3",
+    "libsql/sqld/sqld",
     "ory/tap/cli",
     "oven-sh/bun/bun",
     "tursodatabase/tap/turso"
