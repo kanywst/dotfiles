@@ -114,6 +114,93 @@ STEPS=(
 
 do_flake() { cd "$DOTFILES_DIR" && nix flake update; }
 
+# Homebrew 7 refuses to load a formula or cask from an untrusted tap, and both
+# `brew upgrade` and the `brew bundle` that ends every nix-darwin switch load
+# *everything installed*, not just what they mean to change. So one
+# hand-installed tool from an untrusted tap aborts the whole step on a single
+# line — and because that same bundle runs inside the switch, it takes the
+# nix-darwin step down too. One untrusted `sqld` cost two of twelve steps in a
+# run, and neither error named the real problem anywhere near the top.
+#
+# This is the whole defense, not half of it. The declared side needs none:
+# nix-darwin writes every flake.nix entry into its Brewfile as `trusted: true`,
+# so `brew bundle` trusts those as it installs them. What is left over — and
+# what actually broke — is a tool installed by hand from a tap flake.nix never
+# mentions, which is a supported thing to have here (see do_brew below), just
+# not an untrusted one. No static check can see it, because the repo has no
+# record that it exists. Probing turns a failure 34 seconds into a nix build
+# into a named list and the exact command, printed before anything downloads.
+#
+# Fails open on anything unexpected — no brew, an older `brew trust` with no
+# --json, unparseable output, no python3. The probe exists to explain a
+# failure; it must never become one.
+brew_trust_probe() {
+    local trusted formulae casks report
+    command -v brew >/dev/null 2>&1 || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    trusted=$(brew trust --json v1 2>/dev/null) || return 0
+    [[ -n "$trusted" ]] || return 0
+    # --full-name is what makes this cheap: it prints `owner/tap/name` straight
+    # from the installed receipts without loading a single formula file, so the
+    # probe itself cannot trip the error it is looking for.
+    formulae=$(brew list --full-name --formula 2>/dev/null) || return 0
+    casks=$(brew list --full-name --cask 2>/dev/null) || return 0
+
+    report=$(
+        {
+            printf '%s\n---\n%s\n---\n%s\n' "$trusted" "$formulae" "$casks"
+        } | python3 -c '
+import json, sys
+
+blobs = sys.stdin.read().split("\n---\n")
+if len(blobs) != 3:
+    sys.exit(0)
+try:
+    trust = json.loads(blobs[0])
+except Exception:
+    sys.exit(0)
+
+# Whole-tap trust covers every formula in it, present and future.
+taps = set(trust.get("taps") or [])
+CORE = ("homebrew/core/", "homebrew/cask/")
+
+bad = []
+for blob, trusted, flag in (
+    (blobs[1], set(trust.get("formulae") or []), "--formula"),
+    (blobs[2], set(trust.get("casks") or []), "--cask"),
+):
+    for entry in blob.split():
+        if "/" not in entry or entry.startswith(CORE):
+            continue
+        if entry in trusted:
+            continue
+        if "/".join(entry.split("/")[:2]) in taps:
+            continue
+        bad.append((entry, flag))
+
+for entry, flag in bad:
+    print("%s\t%s" % (entry, flag))
+'
+    ) || return 0
+
+    [[ -n "$report" ]] || return 0
+
+    printf '✗ installed from an untrusted tap — brew would abort on the first of these:\n\n'
+    printf '%s\n' "$report" | while IFS=$'\t' read -r entry flag; do
+        [[ -n "$entry" ]] || continue
+        printf '    %-34s brew trust %s %s\n' "$entry" "$flag" "$entry"
+    done
+    printf '\n'
+    printf '  Homebrew 7 will not load these, and brew upgrade / brew bundle load\n'
+    printf '  every installed package, so one of them fails the whole step.\n\n'
+    printf '  Keeping it: run the trust command above. If it is meant to be permanent,\n'
+    printf '  declare it in flake.nix (taps + brews/casks) as well, which\n'
+    printf '  tests/trust-coverage.sh then holds to the trust store.\n'
+    printf '  Dropping it: brew uninstall <name> && brew untap <owner>/<tap>\n'
+    return 1
+}
+export -f brew_trust_probe
+
 # nix-darwin: apply the flake. The one implementation — mise.toml's
 # `darwin-switch` task delegates here rather than keeping a second copy.
 # PATH and USER are propagated through sudo; HOME is deliberately not, so nix
@@ -123,7 +210,7 @@ do_flake() { cd "$DOTFILES_DIR" && nix flake update; }
 # darwinConfigurations.takumaniwa) won't exist.
 do_darwin() {
     cd "$DOTFILES_DIR" || return 1
-    local path who; path=$PATH; who=$(whoami)
+    local path who rc; path=$PATH; who=$(whoami)
     # `sudo -n`: this can run inside `gum spin`, which swallows the password
     # prompt. The credential was already cached by the up-front `sudo -v`, so
     # -n succeeds here; if it has expired, -n fails fast with a visible error
@@ -137,6 +224,16 @@ do_darwin() {
         sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
             nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
     fi
+    rc=$?
+    # The switch ends in `brew bundle`, so an untrusted tap fails it only after
+    # every nix-side change has already been applied. Not worth probing up front
+    # and blocking the whole switch for — the nix half is the point and it works
+    # — but the bundle's own error names one formula and no fix, and it lands at
+    # the very end of the log, which is exactly what the failure tail prints.
+    # Appending the probe there puts the explanation where the tail will pick it
+    # up, without changing what the step does or what it returns.
+    ((rc == 0)) || brew_trust_probe || :
+    return $rc
 }
 
 # Homebrew lives partly outside the flake (casks, trial installs). Leading
@@ -149,6 +246,10 @@ do_darwin() {
 # one). This is an unattended run, so disable ask-mode and just proceed.
 do_brew() {
     export HOMEBREW_NO_ASK=1   # runs in its own bash -c subshell; scope is this step.
+    # Up front here, unlike in do_darwin: `brew upgrade` aborts on this condition
+    # without upgrading anything, so there is nothing to lose by failing first —
+    # and doing so skips a catalog refresh that only earns a worse error.
+    brew_trust_probe || return 1
     # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
     HOMEBREW_NO_AUTO_UPDATE= brew update \
         && brew upgrade \
@@ -163,6 +264,11 @@ do_brew() {
 # cleanly instead, and the formula upgrades still run.
 do_brew_cask() {
     export HOMEBREW_NO_ASK=1
+    # `brew upgrade --cask` aborts on an untrusted cask exactly as the formula
+    # side does. Probed per step rather than once for the run: the steps are
+    # independent by design (a failed formula step does not stop this one), so
+    # each has to be able to explain its own failure.
+    brew_trust_probe || return 1
     brew upgrade --cask
 }
 
