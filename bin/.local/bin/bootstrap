@@ -10,7 +10,7 @@
 #
 # Every step is idempotent — re-running only installs what's missing. Run once
 # after `./install.sh` + `darwin-rebuild switch` on a fresh Mac; safe to re-run.
-# `work` keeps these same layers *updated*; this only handles first install.
+# `bump` keeps these same layers *updated*; this only handles first install.
 #
 # Usage:
 #   bootstrap            # install everything missing
