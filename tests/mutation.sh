@@ -27,6 +27,13 @@ SUITE="$ROOT/tests/bump.test.sh"
 SLOW=false
 [[ "${1:-}" == "--slow" ]] && SLOW=true
 
+TIMEOUT_BIN=
+for _t in timeout gtimeout; do command -v "$_t" >/dev/null 2>&1 && { TIMEOUT_BIN=$_t; break; }; done
+# The fast suite is well under a minute and the slow one about six, so these
+# leave generous headroom while still bounding a hang.
+PER_MUTATION_TIMEOUT=300
+$SLOW && PER_MUTATION_TIMEOUT=900
+
 red=$'\e[38;5;203m'; grn=$'\e[38;5;84m'; dim=$'\e[38;5;244m'; off=$'\e[0m'
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/bump-mut.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -128,10 +135,25 @@ for entry in "${MUTATIONS[@]}"; do
     # included, so it turned every fast run into a slow one.
     declare -a env_prefix=("BUMP_UNDER_TEST=$mutant")
     $SLOW && env_prefix+=("BUMP_TEST_SLOW=1")
-    if env "${env_prefix[@]}" "$SUITE" >"$TMP/out" 2>&1; then
+    # Bounded, because a mutation can make bump HANG rather than misbehave:
+    # removing the watchdog's kill-after leaves a step that ignores SIGTERM
+    # running forever while the runner waits on it, so the suite never returns
+    # and the whole measurement stops on mutation 2 of 4. A hang is a caught
+    # regression, not a reason to stop measuring — it just has to be bounded.
+    declare -a runner=(env "${env_prefix[@]}" "$SUITE")
+    [[ -n "$TIMEOUT_BIN" ]] && runner=("$TIMEOUT_BIN" -k 10 "$PER_MUTATION_TIMEOUT" "${runner[@]}")
+    if "${runner[@]}" >"$TMP/out" 2>&1; then
         printf '%s  ✗  SURVIVED: %s%s\n' "$red" "$name" "$off"
         SURVIVED=$((SURVIVED + 1)); SURVIVORS+=("$name")
     else
+        rc=$?
+        if [[ -n "$TIMEOUT_BIN" ]] && ((rc == 124 || rc == 137)); then
+            printf '%s  ✓%s  caught: %s\n%s      by: the mutant HUNG — no result in %ss%s\n' \
+                "$grn" "$off" "$name" "$dim" "$PER_MUTATION_TIMEOUT" "$off"
+            # The suite's own stubborn stubs outlive a hung mutant by design.
+            pkill -f 'bump.mutant' 2>/dev/null
+            CAUGHT=$((CAUGHT + 1)); continue
+        fi
         first=$(sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' "$TMP/out" | grep -m1 -- '✗' | sed 's/^ *✗ *//')
         [[ -z "$first" ]] && first="(the suite exited non-zero without a failing assertion — check $TMP/out)"
         printf '%s  ✓%s  caught: %s\n%s      by: %s%s\n' "$grn" "$off" "$name" "$dim" "${first:-?}" "$off"
