@@ -39,6 +39,7 @@
 #   bump --skip atuin,npm   # run everything except these
 #   bump -l|--list          # list the step names
 #   bump -v|--verbose       # stream every command's output live, serially
+#   bump -V|--version       # print the version and the revision it came from
 #   bump -h|--help          # show this help
 #
 # Env:
@@ -47,6 +48,12 @@
 #   DARWIN_MAS=1       # let the nix-darwin switch install the masApps (fresh Mac)
 
 set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
+
+# Bumped by hand; the tag `bump-v<this>` marks the commit it was bumped in.
+# It exists so a screenshot of a run can be traced to a revision. That came up
+# for real: a bug report arrived as an image and the only way to tell which
+# version produced it was to squint at the shape of the summary box.
+BUMP_VERSION=1.0.0
 
 export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 
@@ -316,23 +323,30 @@ build_plan() {
 RUNNER=()
 build_runner() {
     local fn="do_${1//-/_}" inner
-    # `trap '' TERM` in the runner, so that `timeout -k` can do its job. timeout
-    # returns as soon as its DIRECT child exits, and this shell is that child:
-    # without the trap it dies on the watchdog's TERM in milliseconds, timeout
-    # returns, and the kill-after never fires — measured, a step that ignored
-    # TERM was correctly reported as timed out while its process went on running
-    # forever as an orphan. With the runner surviving TERM, timeout waits out
-    # its -k window and then SIGKILLs the whole process group. A step that
-    # handles TERM normally still exits at once, so this costs nothing there.
-    # `trap ':'`, NOT `trap ''`: an IGNORED signal is inherited across exec, so
-    # `trap '' TERM` here silently made every child ignore TERM too — a normal
-    # step then survived the watchdog's TERM and sat out the full 30s kill-after
-    # for nothing (measured: 32s for a step that should have died in 2). A
-    # CAUGHT signal is reset to the default in the exec'd child, so only this
-    # shell survives and the steps themselves still die on TERM as they should.
+    # The runner catches TERM so that `timeout -k` can do its job at all: timeout
+    # returns as soon as its DIRECT child exits, and this shell is that child, so
+    # without the trap it died on the watchdog's TERM in milliseconds, timeout
+    # returned, and the kill-after never fired — measured, a step that ignored
+    # TERM was reported as timed out while its process went on running as an
+    # orphan, still alive 38s later.
+    #
+    # `trap ':'` and not `trap ''`: an IGNORED signal is inherited across exec,
+    # so `trap ''` made every child ignore TERM too and an ordinary step then sat
+    # out the whole 30s kill-after for nothing (32s for a step that should have
+    # died in 2). A CAUGHT signal is reset to the default in the exec'd child, so
+    # only this shell survives and the steps themselves still die on TERM.
+    #
+    # Both branches run $fn as a plain foreground command, verbose included.
+    # `$fn | tee` looks equivalent and is not: with the step on the left of a
+    # pipeline, the runner's wait is interrupted by the caught TERM and does not
+    # resume, so it returned in 2s where the same step took the full 32s to be
+    # SIGKILLed on the non-verbose path — measured side by side on one serial
+    # step. Redirecting into a process substitution keeps tee without putting
+    # the step in a pipeline, and makes $fn's own status the runner's status
+    # instead of leaning on pipefail.
     local guard="trap ':' TERM; "
     if $VERBOSE; then
-        inner="${guard}set -uo pipefail; $fn 2>&1 | tee \"\$BUMP_LOG\""
+        inner="${guard}set -uo pipefail; exec > >(tee \"\$BUMP_LOG\") 2>&1; $fn"
     else
         inner="${guard}set -uo pipefail; exec >\"\$BUMP_LOG\" 2>&1; $fn"
     fi
@@ -340,8 +354,9 @@ build_runner() {
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
         # -k 30: the watchdog's TERM is only a request. A package manager that
         # traps it (or is mid-`brew` Ruby teardown) would keep the whole process
-        # group alive past its own timeout, which is the hang the watchdog
-        # exists to end. SIGKILL 30s later makes the cap actually a cap.
+        # group alive past its own timeout, which is the hang the watchdog exists
+        # to end. SIGKILL 30s later closes that — but only together with the
+        # runner's TERM trap above; on its own this flag was a no-op.
         RUNNER=("$TIMEOUT_BIN" -k 30 "$BUMP_TIMEOUT" "${RUNNER[@]}")
     fi
 }
@@ -532,6 +547,9 @@ run_parallel() { # idx... passed as parallel arrays via globals below
         if ((deadline > 0 && SECONDS > deadline)); then
             for i in "${!p_name[@]}"; do
                 ((reported[i])) && continue
+                # The subshell is all that can still be alive: each worker is
+                # wrapped in `timeout -k 30 $BUMP_TIMEOUT`, so it is dead by
+                # BUMP_TIMEOUT+30 — a full 30s before this deadline at +60.
                 kill "${pids[$i]}" 2>/dev/null
                 say_lost "${p_idx[$i]}" "${p_emoji[$i]}" "${p_label[$i]}" \
                     $((SECONDS - t_phase)) "$LOG_DIR/${p_name[$i]}.log"
@@ -579,6 +597,33 @@ box_width() {
     ((c > 100)) && c=100
     ((c < 40)) && c=40
     printf '%s' "$c"
+}
+
+# Where this script really lives, following the stow symlink. `cd -P` on the
+# dirname is NOT enough: stow links each file, so $0 is itself the symlink and
+# the directory it sits in is ~/.local/bin, not the checkout. Resolve the file
+# link, repeatedly, and only then take the directory.
+self_dir() {
+    local src=$0 dir
+    while [[ -L "$src" ]]; do
+        dir=$(cd -P "$(dirname "$src")" 2>/dev/null && pwd) || return 1
+        src=$(readlink "$src")
+        [[ "$src" != /* ]] && src="$dir/$src"
+    done
+    cd -P "$(dirname "$src")" 2>/dev/null && pwd
+}
+
+# The hardcoded version alone cannot tell a tagged release from four commits
+# past it with local edits, which is exactly what a bug report needs. When the
+# script resolves back into its checkout, git answers that precisely.
+version() {
+    local dir rev
+    printf 'bump %s' "$BUMP_VERSION"
+    dir=$(self_dir) || { printf '\n'; return 0; }
+    if rev=$(git -C "$dir" describe --tags --always --dirty 2>/dev/null) && [[ -n "$rev" ]]; then
+        printf ' (%s)' "$rev"
+    fi
+    printf '\n'
 }
 
 banner() {
@@ -702,6 +747,11 @@ summary() {
 # spending one of the 20 slots on a run that recorded nothing.
 prune_logs() {
     local d n=0
+    # The version stamp is metadata about the run, not something the run
+    # recorded, so a directory holding only that is still an empty run. Dropping
+    # it first is what keeps `rmdir` able to see that.
+    [[ -e "$LOG_DIR/.version" ]] && ! ls "$LOG_DIR"/*.log >/dev/null 2>&1 \
+        && rm -f "$LOG_DIR/.version"
     rmdir "$LOG_DIR" 2>/dev/null
     while IFS= read -r d; do
         n=$((n + 1))
@@ -742,6 +792,7 @@ while (($#)); do
             awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
             exit 0 ;;
         -l|--list)     all_names; exit 0 ;;
+        -V|--version)  version; exit 0 ;;
         -v|--verbose)  VERBOSE=true; shift ;;
         -n|--dry-run)  DRY_RUN=true; shift ;;
         --only)        need_arg "$1" "${2:-}"; ONLY="$2"; shift 2 ;;
@@ -761,7 +812,6 @@ TAG_W=$(( ${#SEL_NAME[@]} > 9 ? 7 : 5 ))   # width of "[12/12]" vs "[9/9]"
 ((${#SEL_NAME[@]} == 0)) && { printf '%sno steps selected%s\n' "$R" "$X" >&2; exit 2; }
 
 banner
-start=$SECONDS
 
 # Say so out loud rather than degrading quietly: a run with no watchdog is
 # exactly the run that can burn an hour behind the spinner.
@@ -841,7 +891,14 @@ if $DRY_RUN; then
     exit 0
 fi
 
+# Started here, not before the sudo prompt: the elapsed time is meant to measure
+# the run, and starting it earlier folded in however long the human took to type
+# a password — time that then appeared in the total while belonging to no bar in
+# the chart below it.
+start=$SECONDS
+
 mkdir -p "$LOG_DIR" || { printf '%scannot create log dir %s%s\n' "$R" "$LOG_DIR" "$X" >&2; exit 2; }
+version >"$LOG_DIR/.version" 2>/dev/null   # so a kept log says which build wrote it
 echo
 
 # Serial phase first (ordered, root-hungry), then the independent managers.
