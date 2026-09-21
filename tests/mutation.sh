@@ -56,6 +56,13 @@ MUTATIONS=(
     '--only= with no value is accepted again|s/need_arg --only "\${1#\*=}"; //'
     'the numeric check on a parallel result is removed|/=~ \^\[0-9\]/s@.*@            :@'
     'sudo outcomes collapse into one message|s|elif ! { : </dev/tty; } 2>/dev/null; then|elif false; then|'
+    # The trust probe, written in a separate pass. Its tests read as sound;
+    # whether they bite is a different question from whether they exist, which
+    # is the entire reason this file exists.
+    'the brew steps stop probing for untrusted taps|s/brew_trust_probe || return 1/:/'
+    'a failing switch is no longer explained by the probe|s/((rc == 0)) || brew_trust_probe || :/:/'
+    'whole-tap trust stops covering the formulae inside it|s/taps = set(trust.get("taps") or \[\])/taps = set()/'
+    'core formulae are reported as untrusted too|s|CORE = ("homebrew/core/", "homebrew/cask/")|CORE = ("zzz-no-match/",)|'
 )
 # Only reachable with BUMP_TEST_SLOW=1, so `--slow` runs THESE and not the whole
 # set again: the fast ones are already measured and re-running each against a
@@ -81,6 +88,10 @@ $SLOW && base_env+=("BUMP_TEST_SLOW=1")
 if ! env "${base_env[@]+"${base_env[@]}"}" "$SUITE" >"$TMP/base" 2>&1; then
     printf '%s  the suite fails on the unmutated script — fix that first:%s\n' "$red" "$off"
     sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' "$TMP/base" | grep -- '✗' | sed 's/^ */    /'
+    # Keep the whole thing: the ✗ lines alone drop the "--- got ---" blocks,
+    # which are the only part that says WHY, and $TMP is about to be removed.
+    cp "$TMP/base" "${TMPDIR:-/tmp}/bump-mutation-baseline.log" 2>/dev/null \
+        && printf '%s  full log: %s%s\n' "$dim" "${TMPDIR:-/tmp}/bump-mutation-baseline.log" "$off"
     exit 1
 fi
 printf '%s  baseline green%s\n\n' "$dim" "$off"
