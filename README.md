@@ -423,6 +423,7 @@ terminal, since gum grows a box to its longest line and does not wrap.
 | `bump --only nix,brew` | run only these steps |
 | `bump --skip atuin` | run everything except these |
 | `bump -l` | list the step names |
+| `bump -V` | print the version and the revision it came from |
 | `bump -v` | stream every command's output live (forces serial) |
 | `bump -h` | help |
 
@@ -442,9 +443,18 @@ that actually shipped. It stubs every manager onto a temp `PATH` and redirects
 network. It runs on pre-push, in CI, and via `mise run test` — which runs it
 twice, the second time under `/bin/bash`, because macOS's bash 3.2 is what
 `#!/usr/bin/env bash` finds on a fresh Mac and it is stricter about empty
-arrays under `set -u`. `BUMP_TEST_SLOW=1` adds the two branches a normal run
-never reaches — the sudo keep-alive's 60-second refresh and the watchdog's
-SIGKILL escalation — for about two and a half minutes more.
+arrays under `set -u`. `BUMP_TEST_SLOW=1` adds the branches a normal run never
+reaches — the sudo keep-alive's 60-second refresh, the watchdog's SIGKILL
+escalation, and the deadline that ends the parallel poll when a child never
+reports — for a few minutes more.
+
+`tests/mutation.sh` measures whether that suite is worth anything: it breaks one
+behaviour of `bump` at a time and checks the suite notices. A mutation that
+survives is a hole. It refuses to run against a failing baseline, because on a
+red suite every mutation looks caught — that produced a confident 15/15 once
+while the real number was 10/15. `--show` prints what each mutation actually
+changes, which is how two mutations that were quietly testing nothing were
+found.
 
 Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` disables). Output is captured to a log rather than the screen, so a stall shows as nothing at all; the cap turns it into one failed step instead of a silent hour, and the remaining steps still run. It needs `timeout(1)` from `coreutils` (declared in the Brewfile for exactly this); if that's missing the run prints a warning and the steps go unbounded. The nix-darwin step does its work through `sudo`, so the watchdog frees the run but can't reap the root-owned child.
 

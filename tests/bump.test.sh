@@ -167,13 +167,30 @@ assert_contains "unknown --only name is named" "$OUT" "unknown step in --only: t
 run -- --only=
 assert_eq "--only= with no value exits 2" "$RC" "2"
 
-# Names are matched literally: as a regex this validated against every step.
-run -- --only '.*'
+# Names are matched literally. The exit code cannot show this — a regex that
+# validates still selects nothing, and "nothing selected" is also exit 2 — so
+# the message is the only discriminator: `np.` must be rejected as an unknown
+# NAME, not accepted as a pattern and then quietly matched against nothing.
+run -- --only 'np.'
 assert_eq "--only regex is not a pattern" "$RC" "2"
+assert_contains "--only regex is rejected as an unknown name" "$OUT" "unknown step in --only: np."
+assert_missing "--only regex is not silently accepted then matched" "$OUT" "no steps selected"
 
-# Splitting the list also globbed it against \$PWD.
-run -- --skip '*'
-assert_eq "--skip glob is not expanded" "$RC" "2"
+# Splitting the list also globbed it against $PWD, so run this from a directory
+# holding files named after real steps: with globbing on, `*` becomes `gh npm`
+# and those get silently skipped; with it off, `*` stays an unknown name. The
+# exit code is the same either way in an empty directory, which is why the
+# first version of this test passed against the broken code.
+mkdir -p "$TMP/globtrap" && : >"$TMP/globtrap/gh" && : >"$TMP/globtrap/npm"
+(
+    cd "$TMP/globtrap" || exit 1
+    env -i PATH="$STUB:$SYSBIN" HOME="$TMP" TERM=dumb \
+        XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data" \
+        RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=5 \
+        "$SHELL_UNDER_TEST" "$BUMP" --skip '*' </dev/null 2>&1
+) >"$TMP/globout" 2>&1
+OUT=$(sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' "$TMP/globout")
+assert_contains "--skip is not globbed against the working directory" "$OUT" "unknown step in --skip: *"
 
 run -- --only npm --skip npm
 assert_eq "selecting nothing exits 2" "$RC" "2"
@@ -468,7 +485,23 @@ if [[ "${BUMP_TEST_SLOW:-}" == 1 ]]; then
         else
             bad "the SIGKILL escalation did not happen as expected: the run took ${_took}s"
         fi
-        # The runner has to survive TERM for the kill-after to fire at all, but
+        # --verbose builds a different runner (a tee pipeline instead of an exec
+    # redirect), so the TERM trap has to be on that path too. It was, but only
+    # the non-verbose path had ever been exercised.
+    if $HAVE_TIMEOUT; then
+        reset_stubs
+        stub gh 'trap "" TERM; while :; do sleep 1; done'
+        _t0=$SECONDS
+        run BUMP_TIMEOUT=2 -- -v --only gh
+        _took=$((SECONDS - _t0))
+        if ((_took >= 25 && _took < 90)); then
+            ok "--verbose is killed by the watchdog too (${_took}s)"
+        else
+            bad "--verbose did not get the kill-after: ${_took}s"
+        fi
+    fi
+
+    # The runner has to survive TERM for the kill-after to fire at all, but
         # it must not make its CHILDREN survive it: `trap ''` is inherited across
         # exec and made every ordinary step sit out the full 30s for nothing.
         reset_stubs
@@ -480,6 +513,47 @@ if [[ "${BUMP_TEST_SLOW:-}" == 1 ]]; then
             ok "a step that respects SIGTERM pays no kill-after penalty (${_took}s)"
         else
             bad "an ordinary step waited out the kill-after: ${_took}s"
+        fi
+    fi
+
+    # The deadline that ends the parallel poll when a child never reports its
+    # result. It needs BUMP_TIMEOUT+60 seconds to fire, which is why it is here
+    # — and until this was written nothing in the suite reached it at all:
+    # replacing say_lost with say_result survived a whole mutation run.
+    #
+    # A child is made unable to land its sentinel by taking write permission off
+    # the log directory the moment it appears, which is the same shape as a
+    # child killed before writing, and reachable without killing anything.
+    if $HAVE_TIMEOUT; then
+        reset_stubs
+        rm -rf "$TMP/cache/bump"
+        stub gh 'sleep 3'
+        _t0=$SECONDS
+        (
+            env -i PATH="$STUB:$SYSBIN" HOME="$TMP" TERM=dumb \
+                XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data" \
+                RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=1 \
+                "$SHELL_UNDER_TEST" "$BUMP" --only gh </dev/null >"$TMP/lost.out" 2>&1
+        ) &
+        _runner=$!
+        _ld=
+        for _ in $(seq 1 100); do
+            _ld=$(find "$TMP/cache/bump" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
+            [[ -n "$_ld" ]] && break
+            sleep 0.1
+        done
+        [[ -n "$_ld" ]] && chmod 500 "$_ld"
+        wait "$_runner" 2>/dev/null
+        [[ -n "$_ld" ]] && chmod 700 "$_ld"
+        _took=$((SECONDS - _t0))
+        OUT=$(sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' "$TMP/lost.out")
+        assert_contains "a child that never reports is named as lost, not given an invented status" \
+            "$OUT" "no result after"
+        assert_missing "a lost child is not reported with a made-up exit code" "$OUT" "exit 137"
+        if ((_took >= 55 && _took < 120)); then
+            ok "the parallel poll ends at the deadline instead of hanging (${_took}s)"
+        else
+            bad "the deadline did not bound the poll as expected: ${_took}s"
         fi
     fi
 fi
