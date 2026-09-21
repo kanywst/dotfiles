@@ -152,7 +152,6 @@
               "anomalyco/tap"        # opencode
               "charmbracelet/tap"    # crush, vhs
               "kanywst/tap"          # approval-hub, y509
-              "nikitabobko/tap"      # aerospace cask
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
             ];
@@ -309,7 +308,6 @@
               "warp"
               # third-party taps
               "kanywst/tap/y509"
-              "nikitabobko/tap/aerospace"
             ];
             # App Store apps (needs `mas`, declared above). Declared in the `let`
             # above so `masSkip` can derive the skip list from the same ids.

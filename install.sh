@@ -12,7 +12,7 @@
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STOW_PACKAGES=(zsh git starship atuin ghostty jj aerospace karabiner bin homebrew)
+STOW_PACKAGES=(zsh git starship atuin ghostty jj karabiner bin homebrew)
 
 # Homebrew resolves its trust store to "$XDG_CONFIG_HOME/homebrew/trust.json",
 # but the nix-darwin activation runs `brew bundle` under

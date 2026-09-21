@@ -16,7 +16,6 @@
   "trustedcasks": [
     "kanywst/tap/brtc",
     "kanywst/tap/prpr",
-    "kanywst/tap/y509",
-    "nikitabobko/tap/aerospace"
+    "kanywst/tap/y509"
   ]
 }
