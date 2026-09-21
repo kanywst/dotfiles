@@ -340,6 +340,104 @@ else
     printf '%s  · skipped: watchdog tests need timeout(1) from coreutils%s\n' "$dim" "$off"
 fi
 
+# --- homebrew trust pre-flight --------------------------------------------
+# Homebrew 7 refuses to load anything from an untrusted tap, and both
+# `brew upgrade` and the `brew bundle` that ends a nix-darwin switch load every
+# installed package rather than only what they mean to touch. One hand-installed
+# `sqld` from an untrusted tap therefore failed BOTH the brew step and the
+# nix-darwin step of a real run, with an error that named the formula and
+# nothing else — no indication that the two failures were one cause.
+#
+# brew_stub <trust-json> <full-name formulae> <full-name casks>
+# The JSON is single-quoted into the sh stub, so it must not contain a quote of
+# that kind — Homebrew's own output never does.
+brew_stub() {
+    stub brew "case \"\$1\" in
+  trust) echo '$1' ;;
+  list)  case \"\$*\" in
+           *--formula*) echo '$2' ;;
+           *--cask*)    echo '$3' ;;
+         esac ;;
+  *) echo \"brew \$*\" ;;
+esac
+exit 0"
+}
+
+UNTRUSTED='{"taps":[],"formulae":[],"casks":[],"commands":[]}'
+FORMULA_OK='{"taps":[],"formulae":["libsql/sqld/sqld"],"casks":[],"commands":[]}'
+TAP_OK='{"taps":["libsql/sqld"],"formulae":[],"casks":[],"commands":[]}'
+
+reset_stubs; brew_stub "$UNTRUSTED" "libsql/sqld/sqld" ""
+run -- --only brew
+assert_eq "an untrusted installed formula fails the brew step" "$RC" "1"
+assert_contains "the untrusted formula is named" "$OUT" "libsql/sqld/sqld"
+assert_contains "the report gives the exact command to fix it" "$OUT" \
+    "brew trust --formula libsql/sqld/sqld"
+# The point of probing rather than letting brew discover it: the step gives up
+# before `brew update` spends a minute refreshing the catalog to earn a worse
+# error. If this regresses the probe still reports, but has stopped paying.
+assert_missing "no upgrade is attempted once the probe fails" "$OUT" "brew update"
+
+reset_stubs; brew_stub "$FORMULA_OK" "libsql/sqld/sqld" ""
+run -- --only brew
+assert_eq "a trusted tap formula does not block the step" "$RC" "0"
+
+reset_stubs; brew_stub "$TAP_OK" "libsql/sqld/sqld" ""
+run -- --only brew
+assert_eq "whole-tap trust covers the formulae inside it" "$RC" "0"
+
+# --full-name prints core formulae bare. Reading those as untrusted would fail
+# every run on every machine, since the trust store never lists them.
+reset_stubs; brew_stub "$UNTRUSTED" "jq
+ripgrep" ""
+run -- --only brew
+assert_eq "bare core formulae are never reported as untrusted" "$RC" "0"
+
+reset_stubs; brew_stub "$UNTRUSTED" "" "nikitabobko/tap/aerospace"
+run -- --only brew-cask
+assert_eq "an untrusted installed cask fails the cask step" "$RC" "1"
+assert_contains "a cask is fixed with --cask, not --formula" "$OUT" \
+    "brew trust --cask nikitabobko/tap/aerospace"
+
+# Fails open, deliberately: a brew too old to have `trust --json` must not start
+# failing runs that would otherwise work. The probe explains failures; it is not
+# allowed to become one.
+reset_stubs
+# shellcheck disable=SC2016  # $1/$* are the stub's own args, not this shell's.
+stub brew 'case "$1" in trust) exit 1 ;; esac; echo "brew $*"; exit 0'
+run -- --only brew
+assert_eq "a brew with no trust --json is not treated as untrusted" "$RC" "0"
+
+# The switch applies every nix-side change before its brew bundle runs, so the
+# probe must NOT pre-empt it — blocking there would cost the nix half of the
+# switch, which works fine. It may only explain the failure afterwards, at the
+# end of the log, which is the part `tail` shows.
+# The default sudo stub returns 0 without running its command, so darwin-rebuild
+# would never run and every assertion here would pass vacuously. These use a
+# stub that execs through instead. It has to strip sudo's own options rather
+# than `shift` once: the up-front warm-up is `sudo -n -v`, which is all options
+# and no command, and a stub that tried to exec `-v` failed — which bump read as
+# "no sudo", skipped the step, and handed the assertions a run that never
+# happened.
+SUDO_EXEC="touch \"$TMP/sudo-called\"
+while [ \$# -gt 0 ]; do case \"\$1\" in -*) shift ;; *) break ;; esac; done
+[ \$# -eq 0 ] && exit 0
+exec \"\$@\""
+
+reset_stubs; brew_stub "$UNTRUSTED" "libsql/sqld/sqld" ""
+stub sudo "$SUDO_EXEC"
+stub darwin-rebuild 'echo "Error: Refusing to load formula libsql/sqld/sqld"; exit 1'
+run -- --only darwin
+assert_eq "a failing switch still exits 1" "$RC" "1"
+assert_contains "a failing switch is explained by the trust probe" "$OUT" \
+    "brew trust --formula libsql/sqld/sqld"
+
+reset_stubs; brew_stub "$UNTRUSTED" "libsql/sqld/sqld" ""
+stub sudo "$SUDO_EXEC"
+run -- --only darwin
+assert_eq "an untrusted tap does not fail a switch that succeeded" "$RC" "0"
+assert_missing "a successful switch prints no trust report" "$OUT" "untrusted tap"
+
 # --- summary honesty -------------------------------------------------------
 reset_stubs
 rm -f "$STUB"/*
