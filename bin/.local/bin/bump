@@ -461,8 +461,14 @@ build_runner() {
         # -k 30: the watchdog's TERM is only a request. A package manager that
         # traps it (or is mid-`brew` Ruby teardown) would keep the whole process
         # group alive past its own timeout, which is the hang the watchdog exists
-        # to end. SIGKILL 30s later closes that — but only together with the
-        # runner's TERM trap above; on its own this flag was a no-op.
+        # to end. SIGKILL 30s later closes that.
+        #
+        # This flag and the runner's TERM trap only work as a pair, and either
+        # one alone is worse than neither. Without the trap, -k never fires:
+        # timeout returns the moment the runner dies on TERM. Without -k, the
+        # trap turns a leaked orphan into a HANG — the runner survives TERM and
+        # then waits forever on a step that also ignored it, so the run never
+        # ends at all. Measured both ways; do not remove one of them.
         RUNNER=("$TIMEOUT_BIN" -k 30 "$BUMP_TIMEOUT" "${RUNNER[@]}")
     fi
 }
