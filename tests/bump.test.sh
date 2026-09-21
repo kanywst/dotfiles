@@ -134,6 +134,31 @@ run() {
 printf '%s▸ bump regression suite — %s (%s)%s\n\n' "$dim" \
     "$SHELL_UNDER_TEST" "$("$SHELL_UNDER_TEST" -c 'echo $BASH_VERSION')" "$off"
 
+# --- the environment ------------------------------------------------------
+# Several assertions need a pty (the box-width and terminal-probe checks) and a
+# controlling terminal (/dev/tty, for the drain and the sudo branches). Inside a
+# restrictive sandbox those fail in a way that looks exactly like the code being
+# broken — 33 of 87 here, identically on every run, on a tree whose suite passes
+# 87 of 87 outside it. Diagnosing that as a bug in bump cost two wrong
+# explanations before the real variable turned up, so the suite says it itself.
+if command -v python3 >/dev/null 2>&1 && ! python3 - <<'PTYCHECK' 2>/dev/null
+import os, pty, sys
+try:
+    pid, fd = pty.fork()
+except OSError:
+    sys.exit(1)
+if pid == 0:
+    os._exit(0)
+os.waitpid(pid, 0)
+PTYCHECK
+then
+    printf '%s  !! this environment cannot allocate a pty. The terminal-dependent\n' "$red"
+    printf '     assertions below will fail for that reason, not because bump is\n'
+    printf '     broken. Run outside the sandbox.%s\n\n' "$off"
+fi
+{ : </dev/tty; } 2>/dev/null || \
+    printf '%s  !! no controlling terminal; the /dev/tty assertions cannot be trusted here%s\n\n' "$red" "$off"
+
 # --- the harness itself ---------------------------------------------------
 # If this ever regresses, every "not installed" assertion below silently starts
 # testing the runner's real tools instead of the guard.
