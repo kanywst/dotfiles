@@ -49,6 +49,14 @@ jobs:
             printf '::error::symlink tracked under homebrew/: %s\n' "$links"
             exit 1
           fi
+      # Homebrew 7 will not load a formula or cask from an untrusted tap. Today
+      # nix-darwin keeps every declared entry loadable by emitting
+      # `trusted: true` in the Brewfile it generates, so this is a backstop for
+      # that assumption rather than a live failure mode — see the script header.
+      # Static (two tracked files, no Homebrew), so it runs here on Linux
+      # exactly as it does in the pre-commit hook.
+      - name: third-party declarations are trusted and tapped
+        run: tests/trust-coverage.sh
 
   bump-tests:
     name: bump regression suite
