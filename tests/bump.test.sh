@@ -765,7 +765,15 @@ export XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
 export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=20
 "$SHELL_UNDER_TEST" "$BUMP"
 WIDERUN
+    # The scenario has to produce a line whose length does NOT follow the
+    # terminal, or the check cannot fail: the duration chart sizes its bars from
+    # box_width(), so with every step succeeding the content adapts on its own
+    # and the box fits even with --width removed — measured at 50 cells in a
+    # 50-column terminal, i.e. passing for the wrong reason. The skipped list is
+    # unbounded, so leave most managers missing and let it grow.
     reset_stubs
+    rm -f "$STUB"/nix "$STUB"/rustup "$STUB"/mise "$STUB"/kubectl "$STUB"/gh \
+          "$STUB"/atuin "$STUB"/cargo "$STUB"/cargo-install-update "$STUB"/gup
     for _cols in 50 100; do
         _w=$(python3 "$TMP/ptywide.py" "$_cols" "$TMP/widerun.sh" 2>/dev/null \
             | tr -d '\r' | sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' \
@@ -877,7 +885,10 @@ export HOME="$TMP" XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
 export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=20
 "$BUMP" --only brew,brew-cask
 saved=\$(stty -g </dev/tty 2>/dev/null)
-stty -icanon min 0 time 0 </dev/tty 2>/dev/null
+# -echo here too: without it this measurement window is itself a place where a
+# straggling reply gets painted on screen, and the test then counts its own
+# instrument's output as a leak from bump.
+stty -icanon -echo min 0 time 1 </dev/tty 2>/dev/null
 n=\$(dd bs=4096 count=1 </dev/tty 2>/dev/null | wc -c | tr -d ' ')
 stty "\$saved" </dev/tty 2>/dev/null
 printf '\nTTYLEFT=%d\n' "\$n"
@@ -897,6 +908,54 @@ GUMRUN
             bad "the gum run never reached a spinner, so the next check is vacuous" "$gum_out"
         fi
         assert_eq "a real gum-driven run leaves the tty queue empty" "${gum_left:-x}" "0"
+        # The same run against a terminal that answers after a short delay, the
+        # way a real one does. Answering instantly hides a race: a non-blocking
+        # drain returns before the reply is in flight, the reply then arrives
+        # with nothing reading it, and the tty echoes it into the middle of the
+        # run's own output — seen for real as
+        #   ^[[?2026;2$y^[[?2027;2$y  ✓ [3/12] 🍺 homebrew formulae
+        cat >"$TMP/laggy.py" <<'LAGGY'
+import os, pty, select, sys, threading, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash"] + sys.argv[1:])
+    os._exit(1)
+def reply(b):
+    time.sleep(0.05)
+    try:
+        os.write(fd, b)
+    except OSError:
+        pass
+out = b""
+while True:
+    try:
+        r, _, _ = select.select([fd], [], [], 30)
+        if not r:
+            break
+        d = os.read(fd, 65536)
+        if not d:
+            break
+        out += d
+        for p, rep in ((b"\x1b[?2026$p", b"\x1b[?2026;2$y"),
+                       (b"\x1b[?2027$p", b"\x1b[?2027;2$y")):
+            for _ in range(d.count(p)):
+                threading.Thread(target=reply, args=(rep,), daemon=True).start()
+    except OSError:
+        break
+os.waitpid(pid, 0)
+sys.stdout.write(out.decode(errors="replace"))
+LAGGY
+        reset_stubs
+        # shellcheck disable=SC2016  # `$y` is literal here: it is what grep looks for.
+        _echoed=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):$SYSBIN" \
+            python3 "$TMP/laggy.py" "$TMP/gumrun.sh" 2>/dev/null \
+            | tr -d '\r' | grep -c '\[?202[67];2\$y')
+        if [[ "${_echoed:-x}" == 0 ]]; then
+            ok "a slow terminal's replies are not echoed into the output"
+        else
+            bad "a slow terminal's replies are echoed into the output" \
+                "echoed occurrences: ${_echoed:-<empty>}"
+        fi
     else
         printf '%s  · skipped: end-to-end probe test needs gum%s\n' "$dim" "$off"
     fi

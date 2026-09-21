@@ -489,6 +489,30 @@ tag() { printf '%-*s' "$TAG_W" "$(printf '[%d/%d]' "$1" "${#SEL_NAME[@]}")"; }
 # `read -t` takes whole seconds only, and a 1s stall per step is worse than the
 # bug. TTIN/TTOU are ignored across it so that running bump in the background
 # fails these calls instead of stopping the process on a terminal-access signal.
+# The drain empties the queue, but by then the terminal has already PAINTED the
+# reply: the probe goes out as the spinner starts, the answer arrives 50ms later
+# while gum is still drawing, nobody is reading, and the tty echoes it — with
+# ECHOCTL rendering the ESC visibly — into the middle of the spinner's own
+# output. That is what
+#   ^[[?2026;2$y^[[?2027;2$y  ✓ [3/12] 🍺 homebrew formulae  (31s)
+# is. Draining afterwards cannot unprint it, so echo has to be off for the whole
+# spinner, not just for the drain.
+TTY_SAVED=
+tty_mute() {
+    { : </dev/tty; } 2>/dev/null || return 0
+    TTY_SAVED=$(stty -g </dev/tty 2>/dev/null)
+    [[ -n "$TTY_SAVED" ]] && stty -echo </dev/tty 2>/dev/null
+    return 0
+}
+# Also wired to EXIT: a run killed mid-spinner would otherwise hand the terminal
+# back with echo off, which looks like a dead shell.
+tty_unmute() {
+    [[ -n "$TTY_SAVED" ]] || return 0
+    stty "$TTY_SAVED" </dev/tty 2>/dev/null
+    TTY_SAVED=
+    return 0
+}
+
 drain_tty() {
     # Probe by opening it, not with `[[ -e /dev/tty ]]`: the device node exists
     # even for a process with no controlling terminal, where every `</dev/tty`
@@ -499,8 +523,20 @@ drain_tty() {
     trap '' TTIN TTOU
     saved=$(stty -g </dev/tty 2>/dev/null)
     if [[ -n "$saved" ]]; then
-        stty -icanon min 0 time 0 </dev/tty 2>/dev/null
-        dd bs=4096 count=1 </dev/tty >/dev/null 2>&1
+        # `time 1` (100ms), not `time 0`. A non-blocking read returns before the
+        # terminal has answered — the probe goes out as gum exits, and the reply
+        # is still in flight when the drain looks. It then arrives with nothing
+        # reading, so the tty ECHOES it into the middle of the run's own output:
+        #   ^[[?2026;2$y^[[?2027;2$y  ✓ [3/12] 🍺 homebrew formulae
+        # which is what a real terminal actually did. 100ms covers the round
+        # trip; `-echo` keeps anything arriving mid-drain off the screen too.
+        stty -icanon -echo min 0 time 1 </dev/tty 2>/dev/null
+        # Loop: one read returns one bufferful, and both replies can straggle in
+        # separately. Bounded so a terminal that chatters cannot hold the run.
+        local i
+        for i in 1 2 3; do
+            dd bs=4096 count=1 </dev/tty 2>/dev/null | grep -q . || break
+        done
         stty "$saved" </dev/tty 2>/dev/null
     fi
     trap - TTIN TTOU
@@ -579,11 +615,13 @@ run_serial() { # idx name emoji label spin
     local log="$LOG_DIR/$name.log" t0=$SECONDS rc
     build_runner "$name"
     if $HAS_GUM && ! $VERBOSE; then
+        tty_mute
         BUMP_LOG="$log" gum spin --spinner "$spin" \
             --spinner.foreground 212 --title.foreground 252 \
             --title "  $(tag "$idx")  $emoji  ${label}…" -- "${RUNNER[@]}"
         rc=$?
         drain_tty
+        tty_unmute
     else
         printf '%s▸ %s %s %s…%s\n' "$C" "$(tag "$idx")" "$emoji" "$label" "$X"
         BUMP_LOG="$log" "${RUNNER[@]}"; rc=$?
@@ -938,6 +976,7 @@ fi
 # hang). Record the failure and let the sudo:yes steps skip cleanly while the
 # rest still run. Steps that don't need root never trigger the prompt at all.
 MAIN_PID=$$
+trap tty_unmute EXIT
 cleanup_sudo() { [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; }
 SUDO_KEEPALIVE_PID=
 if $SUDO_NEEDED && ! $DRY_RUN; then
@@ -993,8 +1032,8 @@ if $SUDO_NEEDED && ! $DRY_RUN && [[ "$SUDO_OK" == true ]]; then
         done
     ) &
     SUDO_KEEPALIVE_PID=$!
-    trap cleanup_sudo EXIT
-    trap 'cleanup_sudo; exit 130' INT TERM
+    trap 'cleanup_sudo; tty_unmute' EXIT
+    trap 'cleanup_sudo; tty_unmute; exit 130' INT TERM
 fi
 
 if $DRY_RUN; then
