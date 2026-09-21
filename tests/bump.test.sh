@@ -156,8 +156,6 @@ then
     printf '     assertions below will fail for that reason, not because bump is\n'
     printf '     broken. Run outside the sandbox.%s\n\n' "$off"
 fi
-{ : </dev/tty; } 2>/dev/null || \
-    printf '%s  !! no controlling terminal; the /dev/tty assertions cannot be trusted here%s\n\n' "$red" "$off"
 
 # --- the harness itself ---------------------------------------------------
 # If this ever regresses, every "not installed" assertion below silently starts
@@ -417,6 +415,20 @@ reset_stubs; brew_stub "$UNTRUSTED" "jq
 ripgrep" ""
 run -- --only brew
 assert_eq "bare core formulae are never reported as untrusted" "$RC" "0"
+
+# The probe also skips anything under homebrew/core/ or homebrew/cask/ by
+# prefix, and nothing here reached that: `brew list --full-name` prints core
+# formulae bare, so the "no slash" clause above catches them first and zero
+# entries on this machine start with either prefix — mutating the prefix tuple
+# to match nothing survived the whole suite. The guard is worth keeping for a
+# brew that qualifies them, but it needs input shaped that way to mean
+# anything, so here it is.
+reset_stubs; brew_stub "$UNTRUSTED" "homebrew/core/jq" ""
+run -- --only brew
+assert_eq "a fully-qualified core formula is not reported as untrusted" "$RC" "0"
+reset_stubs; brew_stub "$UNTRUSTED" "" "homebrew/cask/firefox"
+run -- --only brew-cask
+assert_eq "a fully-qualified core cask is not reported as untrusted" "$RC" "0"
 
 reset_stubs; brew_stub "$UNTRUSTED" "" "nikitabobko/tap/aerospace"
 run -- --only brew-cask
