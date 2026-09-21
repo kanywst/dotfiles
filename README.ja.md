@@ -44,7 +44,6 @@ exec zsh -l
 - aichat: シェル上のマルチモデル LLM CLI
 - `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
-- AeroSpace: i3 ライクなタイル型 WM (SIP 無効化不要)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
 
 ## スタック
@@ -82,7 +81,6 @@ exec zsh -l
 | Secrets scan | gitleaks | 手動の `grep -i secret` |
 | LLM CLI | aichat | API への単発 `curl` |
 | VCS | jj (Jujutsu) + git | git 単独 |
-| Tile WM | AeroSpace | yabai (SIP 無効が必要) / Magnet |
 | Keymap | Karabiner-Elements | macOS システム設定 |
 | App Store | mas | 手動の GUI インストール |
 | Updater | `bump` (bin/) | 場当たり的な `brew upgrade` / `nix flake update` |
@@ -156,9 +154,9 @@ brew install carapace lefthook gitleaks shellcheck actionlint
 # LLM CLI
 brew install aichat
 
-# Modern VCS + tile WM + keymap
+# Modern VCS + keymap
 brew install jj
-brew install --cask nikitabobko/tap/aerospace karabiner-elements
+brew install --cask karabiner-elements
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -479,20 +477,6 @@ tap からロードするのを拒否し、1 回の run で switch と brew ス�
 | `Caps Lock` (タップ) | Escape (Karabiner) |
 | `Caps Lock` (長押し) | Hyper Key (cmd+ctrl+opt+shift) |
 | `Hyper + h/j/k/l` | 矢印キー |
-
-### AeroSpace (タイル型 WM)
-
-| Key | 動作 |
-| --- | --- |
-| `Alt + h/j/k/l` | フォーカス 左/下/上/右 |
-| `Alt-Shift + h/j/k/l` | ウィンドウ移動 |
-| `Alt + 1..9` | ワークスペース切替 |
-| `Alt-Shift + 1..9` | ウィンドウを別ワークスペースへ |
-| `Alt + /` / `,` | tiles / accordion レイアウト |
-| `Alt + f` | フルスクリーン |
-| `Alt-Shift + space` | floating / tiling トグル |
-| `Alt-Shift + q` | ウィンドウを閉じる |
-| `Alt-Shift + c` | AeroSpace 設定を再読込 |
 
 ## 設計メモ
 

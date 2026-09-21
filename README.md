@@ -44,7 +44,6 @@ exec zsh -l
 - aichat: multi-model LLM CLI in the shell
 - `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
-- AeroSpace: i3-like tiling WM (no SIP disable)
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
 
 ## Stack
@@ -82,7 +81,6 @@ exec zsh -l
 | Secrets scan | gitleaks | manual `grep -i secret` |
 | LLM CLI | aichat | one-off `curl` to API |
 | VCS | jj (Jujutsu) + git | git alone |
-| Tile WM | AeroSpace | yabai (needs SIP off) / Magnet |
 | Keymap | Karabiner-Elements | macOS System Settings |
 | App Store | mas | manual GUI installs |
 | Updater | `bump` (bin/) | ad-hoc `brew upgrade` / `nix flake update` runs |
@@ -156,9 +154,9 @@ brew install carapace lefthook gitleaks shellcheck actionlint
 # LLM CLI
 brew install aichat
 
-# Modern VCS + tile WM + keymap
+# Modern VCS + keymap
 brew install jj
-brew install --cask nikitabobko/tap/aerospace karabiner-elements
+brew install --cask karabiner-elements
 
 # Zsh plugins
 brew install zsh-autosuggestions zsh-syntax-highlighting fzf-tab
@@ -483,20 +481,6 @@ Each step is capped by a watchdog (`BUMP_TIMEOUT`, default `1800` seconds, `0` d
 | `Caps Lock` (tap) | Escape (Karabiner) |
 | `Caps Lock` (hold) | Hyper Key (cmd+ctrl+opt+shift) |
 | `Hyper + h/j/k/l` | arrow keys |
-
-### AeroSpace (tiling WM)
-
-| Key | Action |
-| --- | --- |
-| `Alt + h/j/k/l` | focus left/down/up/right |
-| `Alt-Shift + h/j/k/l` | move window |
-| `Alt + 1..9` | switch workspace |
-| `Alt-Shift + 1..9` | move window to workspace |
-| `Alt + /` / `,` | tiles / accordion layout |
-| `Alt + f` | fullscreen |
-| `Alt-Shift + space` | toggle floating / tiling |
-| `Alt-Shift + q` | close window |
-| `Alt-Shift + c` | reload AeroSpace config |
 
 ## Design notes
 

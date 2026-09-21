@@ -430,11 +430,11 @@ reset_stubs; brew_stub "$UNTRUSTED" "" "homebrew/cask/firefox"
 run -- --only brew-cask
 assert_eq "a fully-qualified core cask is not reported as untrusted" "$RC" "0"
 
-reset_stubs; brew_stub "$UNTRUSTED" "" "nikitabobko/tap/aerospace"
+reset_stubs; brew_stub "$UNTRUSTED" "" "kanywst/tap/y509"
 run -- --only brew-cask
 assert_eq "an untrusted installed cask fails the cask step" "$RC" "1"
 assert_contains "a cask is fixed with --cask, not --formula" "$OUT" \
-    "brew trust --cask nikitabobko/tap/aerospace"
+    "brew trust --cask kanywst/tap/y509"
 
 # Fails open, deliberately: a brew too old to have `trust --json` must not start
 # failing runs that would otherwise work. The probe explains failures; it is not
