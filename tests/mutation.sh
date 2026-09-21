@@ -70,6 +70,8 @@ MUTATIONS=(
     'a failing switch is no longer explained by the probe|s/((rc == 0)) || brew_trust_probe || :/:/'
     'whole-tap trust stops covering the formulae inside it|s/taps = set(trust.get("taps") or \[\])/taps = set()/'
     'core formulae are reported as untrusted too|s|CORE = ("homebrew/core/", "homebrew/cask/")|CORE = ("zzz-no-match/",)|'
+    'the terminal is left echoing during a spinner|s/^        tty_mute$//'
+    'the drain returns before the terminal has answered|s/stty -icanon -echo min 0 time 1/stty -icanon min 0 time 0/'
 )
 # Only reachable with BUMP_TEST_SLOW=1, so `--slow` runs THESE and not the whole
 # set again: the fast ones are already measured and re-running each against a
