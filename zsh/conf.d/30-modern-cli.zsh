@@ -60,9 +60,6 @@ if command -v yazi &>/dev/null; then
     }
 fi
 
-# zellij — modern terminal multiplexer
-command -v zellij &>/dev/null && alias zj='zellij'
-
 # tldr/tlrc — alias `help` to whichever binary is on PATH (tlrc package may
 # install either the `tldr` or `tlrc` command depending on version).
 for _tldr_bin in tldr tlrc; do

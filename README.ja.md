@@ -9,6 +9,10 @@
 [![lint](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
+> **自分専用の環境。** 自分の macOS 環境をそのまま公開しているだけで、
+> 外部での利用は想定していない。サポートも互換性の約束もなく、予告なく変わる/壊れる。
+> 読むのも MIT の範囲で部分的に持っていくのも自由。
+
 ## TL;DR
 
 ```bash
@@ -17,7 +21,8 @@ cd ~/dotfiles && ./install.sh
 exec zsh -l
 ```
 
-`install.sh` は GNU stow の薄いラッパー。`zsh/` / `git/` / `starship/` を
+`install.sh` は GNU stow の薄いラッパー。`STOW_PACKAGES` に並べたパッケージ
+(`zsh/` / `git/` / `starship/` / `atuin/` / `ghostty/` / `jj/` / `karabiner/` / `bin/` / `homebrew/`) を
 `$HOME` に link し、衝突するファイルは先に `*.backup` へリネームする。
 
 ## なぜ
@@ -41,7 +46,7 @@ exec zsh -l
 - ghq + fzf: `repo` でディスク上のどこへでもジャンプ
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
-- aichat: シェル上のマルチモデル LLM CLI
+- claude-code / codex / opencode: シェル上のエージェント CLI
 - `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
@@ -71,7 +76,7 @@ exec zsh -l
 | Cd | zoxide | cd + autojump |
 | Fuzzy | fzf + fzf-tab | 手動補完 |
 | Files TUI | yazi | ranger |
-| Multiplex | zellij | tmux |
+| Multiplex | herdr + tmux | zellij |
 | Runtime | mise | nvm / pyenv / nodebrew |
 | Per-dir env | direnv | 手書きの `.env` source |
 | Python pkgs | uv | pip / poetry / virtualenv |
@@ -79,7 +84,7 @@ exec zsh -l
 | Tasks | mise tasks | Makefile / justfile |
 | Hooks | lefthook | husky / pre-commit (Python) |
 | Secrets scan | gitleaks | 手動の `grep -i secret` |
-| LLM CLI | aichat | API への単発 `curl` |
+| LLM CLI | claude-code / codex | API への単発 `curl` |
 | VCS | jj (Jujutsu) + git | git 単独 |
 | Keymap | Karabiner-Elements | macOS システム設定 |
 | App Store | mas | 手動の GUI インストール |
@@ -142,7 +147,7 @@ brew install git gh ghq fzf jq yq stow direnv mas
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
-             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch \
+             ast-grep yazi tmux procs dust sd hyperfine tokei onefetch \
              zstd
 
 # Runtime + package managers
@@ -152,7 +157,7 @@ brew install mise uv bun
 brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
-brew install aichat
+brew install --cask claude-code codex
 
 # Modern VCS + keymap
 brew install jj
@@ -358,12 +363,10 @@ cd <repo> && jj git init --colocate
 | `uvr` / `uva` / `uvs` / `uvi` / `uvp` | uv run / add / sync / init / pip |
 | `br` / `bi` / `ba` / `bre` / `bd` / `bt` | bun run / install / add / remove / dev / test |
 
-### AI + フック + ベンチ
+### フック + ベンチ
 
 | Cmd | 動作 |
 | --- | --- |
-| `ai` | aichat (マルチモデル LLM) |
-| `ask "<task>"` | aichat -e: 自然言語 → シェル |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine ベンチ |

@@ -40,6 +40,32 @@ sync_frequency = 300
 # Rust parser does not expand a literal `~`. Omit and let the default win.
 systemd_socket = false
 
+## ---------- output capture (18.21+) ----------
+# Stores what each command printed next to its history entry: Ctrl-O in search,
+# `atuin output search`, and the MCP atuin_output_search tool. Needs the
+# pty-proxy, which zsh/conf.d/01-atuin-pty.zsh starts. Stays local (never
+# synced). Secrets are redacted best-effort only; for anything that prints a
+# credential, put it in command_filter so its output is never stored.
+# Toggling `enabled` on needs `atuin daemon restart` plus a new shell.
+[output]
+enabled = true
+# Default is 10% of the disk. A fixed cap is easier to reason about.
+max_disk_usage = "5GB"
+# Commands that print credentials or the whole environment. They stay in history;
+# only their output is dropped. Unanchored regexes, matched anywhere.
+command_filter = [
+    "^(env|printenv|set|export)( |$)",
+    "^cat .*(\\.env|credentials|\\.netrc|\\.pem|\\.key|id_[a-z0-9]+)",
+    "^gh auth (token|status)",
+    "^op (read|item get)",
+    "^security find-(generic|internet)-password",
+    "^kubectl get secrets?( |$)",
+    "^aws (sts|configure|sso)",
+    "^(gcloud|az) .*(print-access-token|get-access-token)",
+    "^(vault|bao) (read|kv get)",
+    "^gpg .*--export-secret",
+]
+
 ## ---------- stats ----------
 [stats]
 common_subcommands = [

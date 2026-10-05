@@ -150,7 +150,7 @@
             # External taps referenced by the brews / casks below.
             taps = [
               "anomalyco/tap"        # opencode
-              "charmbracelet/tap"    # crush, vhs
+              "charmbracelet/tap"    # crush
               "kanywst/tap"          # approval-hub, y509
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
@@ -158,7 +158,6 @@
             brews = [
               # homebrew/core (bare name resolves against core)
               "actionlint"
-              "aichat"
               "ansible"
               "ast-grep"
               "atuin"
@@ -204,7 +203,9 @@
               "grype"
               "gum"
               "helm"
-              "httpie"
+              # Wired by zsh/conf.d/35-herdr.zsh. Was hand-installed from core and
+              # never declared, so a fresh Mac got the aliases but not the binary.
+              "herdr"
               "hubble"
               "hyperfine"
               "imagemagick"
@@ -218,7 +219,6 @@
               # embeds jaq so it needs no external jq.
               "jnv"
               "jq"
-              "just"
               "k9s"
               "kind"
               "krew"
@@ -257,7 +257,6 @@
               "protoc-gen-go-grpc"
               "python@3.11"
               "qemu"
-              "reattach-to-user-namespace"
               "ripgrep"
               "rustup"
               "sd"
@@ -275,23 +274,31 @@
               "unar"
               "unzip"
               "uv"
+              "vhs"
               "vegeta"
               "vexctl"
               "wget"
+              # On trial (2026-10): "why is this running" for a PID/port/service.
+              # Stars far outrun installs, so drop it if it stays unused.
+              "witr"
+              # On trial (2026-10): `wt` wraps git worktree for running several
+              # agents side by side. Overlaps `jj workspace` in jj-first repos.
+              "worktrunk"
               "xh"
               "yamllint"
               "yazi"
               "yq"
-              "zellij"
               "zig"
               "zoxide"
               "zsh-autosuggestions"
               "zsh-syntax-highlighting"
               "zstd"
               # third-party taps (tap declared above)
+              # Stay on the tap: it ships upstream's published release binaries
+              # (v1.18.x). homebrew/core's `opencode` builds the unreleased v2.0.x
+              # tags from source instead (checked 2026-10-05).
               "anomalyco/tap/opencode"
               "charmbracelet/tap/crush"
-              "charmbracelet/tap/vhs"
               "kanywst/tap/approval-hub"
               "ory/tap/cli"
               "oven-sh/bun/bun"
@@ -305,7 +312,6 @@
               "karabiner-elements"
               "multipass"
               "ollama-app"
-              "warp"
               # third-party taps
               "kanywst/tap/y509"
             ];
