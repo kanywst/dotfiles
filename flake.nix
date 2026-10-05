@@ -220,7 +220,6 @@
               # embeds jaq so it needs no external jq.
               "jnv"
               "jq"
-              "just"
               "k9s"
               "kind"
               "krew"
