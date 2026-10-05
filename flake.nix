@@ -150,7 +150,7 @@
             # External taps referenced by the brews / casks below.
             taps = [
               "anomalyco/tap"        # opencode
-              "charmbracelet/tap"    # crush, vhs
+              "charmbracelet/tap"    # crush
               "kanywst/tap"          # approval-hub, y509
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
@@ -277,6 +277,7 @@
               "unar"
               "unzip"
               "uv"
+              "vhs"
               "vegeta"
               "vexctl"
               "wget"
@@ -293,7 +294,6 @@
               # third-party taps (tap declared above)
               "anomalyco/tap/opencode"
               "charmbracelet/tap/crush"
-              "charmbracelet/tap/vhs"
               "kanywst/tap/approval-hub"
               "ory/tap/cli"
               "oven-sh/bun/bun"
