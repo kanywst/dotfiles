@@ -198,12 +198,6 @@ if command -v brew &>/dev/null; then
     alias brewup='HOMEBREW_NO_AUTO_UPDATE= brew update && brew upgrade && brew upgrade --cask'
 fi
 
-# ----- AI -----
-if command -v aichat &>/dev/null; then
-    alias ai='aichat'
-    alias ask='aichat -e'      # shell-command generator (English → shell)
-fi
-
 # ----- Hooks / security / bench -----
 command -v lefthook  &>/dev/null && alias lh='lefthook'
 command -v gitleaks  &>/dev/null && alias glk='gitleaks detect --no-banner --redact'

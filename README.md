@@ -9,6 +9,10 @@
 [![lint](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
+> **Personal setup.** This is my own macOS environment, published as-is.
+> Outside use is not a goal: no support, no compatibility promises, and it can
+> change or break without notice. Feel free to read it or lift pieces under MIT.
+
 ## TL;DR
 
 ```bash
@@ -17,8 +21,9 @@ cd ~/dotfiles && ./install.sh
 exec zsh -l
 ```
 
-`install.sh` is a thin GNU-stow wrapper. It links `zsh/`, `git/`,
-`starship/` into `$HOME` and renames any colliding file to `*.backup` first.
+`install.sh` is a thin GNU-stow wrapper. It links every package in its
+`STOW_PACKAGES` list (`zsh/`, `git/`, `starship/`, `atuin/`, `ghostty/`, `jj/`,
+`karabiner/`, `bin/`, `homebrew/`) into `$HOME` and renames any colliding file to `*.backup` first.
 
 ## Why
 
@@ -41,7 +46,7 @@ exec zsh -l
 - ghq + fzf: `repo` jumps to anything on disk
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
-- aichat: multi-model LLM CLI in the shell
+- claude-code / codex / opencode: agent CLIs in the shell
 - `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
@@ -71,7 +76,7 @@ exec zsh -l
 | Cd | zoxide | cd + autojump |
 | Fuzzy | fzf + fzf-tab | manual completion |
 | Files TUI | yazi | ranger |
-| Multiplex | zellij | tmux |
+| Multiplex | herdr + tmux | zellij |
 | Runtime | mise | nvm / pyenv / nodebrew |
 | Per-dir env | direnv | hand-rolled `.env` sourcing |
 | Python pkgs | uv | pip / poetry / virtualenv |
@@ -79,7 +84,7 @@ exec zsh -l
 | Tasks | mise tasks | Makefile / justfile |
 | Hooks | lefthook | husky / pre-commit (Python) |
 | Secrets scan | gitleaks | manual `grep -i secret` |
-| LLM CLI | aichat | one-off `curl` to API |
+| LLM CLI | claude-code / codex | one-off `curl` to API |
 | VCS | jj (Jujutsu) + git | git alone |
 | Keymap | Karabiner-Elements | macOS System Settings |
 | App Store | mas | manual GUI installs |
@@ -142,7 +147,7 @@ brew install git gh ghq fzf jq yq stow direnv mas
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
-             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch \
+             ast-grep yazi tmux procs dust sd hyperfine tokei onefetch \
              zstd
 
 # Runtime + package managers
@@ -152,7 +157,7 @@ brew install mise uv bun
 brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
-brew install aichat
+brew install --cask claude-code codex
 
 # Modern VCS + keymap
 brew install jj
@@ -358,12 +363,10 @@ cd <repo> && jj git init --colocate
 | `uvr` / `uva` / `uvs` / `uvi` / `uvp` | uv run / add / sync / init / pip |
 | `br` / `bi` / `ba` / `bre` / `bd` / `bt` | bun run / install / add / remove / dev / test |
 
-### AI + hooks + bench
+### Hooks + bench
 
 | Cmd | Action |
 | --- | --- |
-| `ai` | aichat (multi-model LLM) |
-| `ask "<task>"` | aichat -e: natural language → shell |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine benchmark |
