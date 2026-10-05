@@ -204,6 +204,9 @@
               "grype"
               "gum"
               "helm"
+              # Wired by zsh/conf.d/35-herdr.zsh. Was hand-installed from core and
+              # never declared, so a fresh Mac got the aliases but not the binary.
+              "herdr"
               "httpie"
               "hubble"
               "hyperfine"
