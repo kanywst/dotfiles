@@ -282,6 +282,9 @@
               # On trial (2026-10): "why is this running" for a PID/port/service.
               # Stars far outrun installs, so drop it if it stays unused.
               "witr"
+              # On trial (2026-10): `wt` wraps git worktree for running several
+              # agents side by side. Overlaps `jj workspace` in jj-first repos.
+              "worktrunk"
               "xh"
               "yamllint"
               "yazi"
