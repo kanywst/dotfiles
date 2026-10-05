@@ -9,6 +9,10 @@
 [![lint](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/kanywst/dotfiles/actions/workflows/lint.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
+> **Personal setup.** This is my own macOS environment, published as-is.
+> Outside use is not a goal: no support, no compatibility promises, and it can
+> change or break without notice. Feel free to read it or lift pieces under MIT.
+
 ## TL;DR
 
 ```bash
