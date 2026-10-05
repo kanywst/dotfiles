@@ -41,7 +41,7 @@ exec zsh -l
 - ghq + fzf: `repo` でディスク上のどこへでもジャンプ
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
-- aichat: シェル上のマルチモデル LLM CLI
+- claude-code / codex / opencode: シェル上のエージェント CLI
 - `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
@@ -79,7 +79,7 @@ exec zsh -l
 | Tasks | mise tasks | Makefile / justfile |
 | Hooks | lefthook | husky / pre-commit (Python) |
 | Secrets scan | gitleaks | 手動の `grep -i secret` |
-| LLM CLI | aichat | API への単発 `curl` |
+| LLM CLI | claude-code / codex | API への単発 `curl` |
 | VCS | jj (Jujutsu) + git | git 単独 |
 | Keymap | Karabiner-Elements | macOS システム設定 |
 | App Store | mas | 手動の GUI インストール |
@@ -152,7 +152,7 @@ brew install mise uv bun
 brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
-brew install aichat
+brew install --cask claude-code codex
 
 # Modern VCS + keymap
 brew install jj
@@ -358,12 +358,10 @@ cd <repo> && jj git init --colocate
 | `uvr` / `uva` / `uvs` / `uvi` / `uvp` | uv run / add / sync / init / pip |
 | `br` / `bi` / `ba` / `bre` / `bd` / `bt` | bun run / install / add / remove / dev / test |
 
-### AI + フック + ベンチ
+### フック + ベンチ
 
 | Cmd | 動作 |
 | --- | --- |
-| `ai` | aichat (マルチモデル LLM) |
-| `ask "<task>"` | aichat -e: 自然言語 → シェル |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine ベンチ |

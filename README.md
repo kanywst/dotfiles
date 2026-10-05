@@ -41,7 +41,7 @@ exec zsh -l
 - ghq + fzf: `repo` jumps to anything on disk
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
-- aichat: multi-model LLM CLI in the shell
+- claude-code / codex / opencode: agent CLIs in the shell
 - `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
@@ -79,7 +79,7 @@ exec zsh -l
 | Tasks | mise tasks | Makefile / justfile |
 | Hooks | lefthook | husky / pre-commit (Python) |
 | Secrets scan | gitleaks | manual `grep -i secret` |
-| LLM CLI | aichat | one-off `curl` to API |
+| LLM CLI | claude-code / codex | one-off `curl` to API |
 | VCS | jj (Jujutsu) + git | git alone |
 | Keymap | Karabiner-Elements | macOS System Settings |
 | App Store | mas | manual GUI installs |
@@ -152,7 +152,7 @@ brew install mise uv bun
 brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
-brew install aichat
+brew install --cask claude-code codex
 
 # Modern VCS + keymap
 brew install jj
@@ -358,12 +358,10 @@ cd <repo> && jj git init --colocate
 | `uvr` / `uva` / `uvs` / `uvi` / `uvp` | uv run / add / sync / init / pip |
 | `br` / `bi` / `ba` / `bre` / `bd` / `bt` | bun run / install / add / remove / dev / test |
 
-### AI + hooks + bench
+### Hooks + bench
 
 | Cmd | Action |
 | --- | --- |
-| `ai` | aichat (multi-model LLM) |
-| `ask "<task>"` | aichat -e: natural language → shell |
 | `lh` | lefthook |
 | `glk` | gitleaks detect (redacted) |
 | `hf` | hyperfine benchmark |

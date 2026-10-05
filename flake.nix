@@ -158,7 +158,6 @@
             brews = [
               # homebrew/core (bare name resolves against core)
               "actionlint"
-              "aichat"
               "ansible"
               "ast-grep"
               "atuin"
