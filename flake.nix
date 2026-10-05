@@ -279,6 +279,9 @@
               "vegeta"
               "vexctl"
               "wget"
+              # On trial (2026-10): "why is this running" for a PID/port/service.
+              # Stars far outrun installs, so drop it if it stays unused.
+              "witr"
               "xh"
               "yamllint"
               "yazi"
