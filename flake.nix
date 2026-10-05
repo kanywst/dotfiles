@@ -294,6 +294,9 @@
               "zsh-syntax-highlighting"
               "zstd"
               # third-party taps (tap declared above)
+              # Stay on the tap: it ships upstream's published release binaries
+              # (v1.18.x). homebrew/core's `opencode` builds the unreleased v2.0.x
+              # tags from source instead (checked 2026-10-05).
               "anomalyco/tap/opencode"
               "charmbracelet/tap/crush"
               "kanywst/tap/approval-hub"
