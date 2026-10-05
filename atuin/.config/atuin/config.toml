@@ -40,6 +40,18 @@ sync_frequency = 300
 # Rust parser does not expand a literal `~`. Omit and let the default win.
 systemd_socket = false
 
+## ---------- output capture (18.21+) ----------
+# Stores what each command printed next to its history entry: Ctrl-O in search,
+# `atuin output search`, and the MCP atuin_output_search tool. Needs the
+# pty-proxy, which zsh/conf.d/01-atuin-pty.zsh starts. Stays local (never
+# synced). Secrets are redacted best-effort only; for anything that prints a
+# credential, put it in command_filter so its output is never stored.
+# Toggling `enabled` on needs `atuin daemon restart` plus a new shell.
+[output]
+enabled = true
+# Default is 10% of the disk. A fixed cap is easier to reason about.
+max_disk_usage = "5GB"
+
 ## ---------- stats ----------
 [stats]
 common_subcommands = [
