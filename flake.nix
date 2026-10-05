@@ -307,7 +307,6 @@
               "karabiner-elements"
               "multipass"
               "ollama-app"
-              "warp"
               # third-party taps
               "kanywst/tap/y509"
             ];
