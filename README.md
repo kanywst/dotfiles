@@ -21,8 +21,9 @@ cd ~/dotfiles && ./install.sh
 exec zsh -l
 ```
 
-`install.sh` is a thin GNU-stow wrapper. It links `zsh/`, `git/`,
-`starship/` into `$HOME` and renames any colliding file to `*.backup` first.
+`install.sh` is a thin GNU-stow wrapper. It links every package in its
+`STOW_PACKAGES` list (`zsh/`, `git/`, `starship/`, `atuin/`, `ghostty/`, `jj/`,
+`karabiner/`, `bin/`, `homebrew/`) into `$HOME` and renames any colliding file to `*.backup` first.
 
 ## Why
 

@@ -21,7 +21,8 @@ cd ~/dotfiles && ./install.sh
 exec zsh -l
 ```
 
-`install.sh` は GNU stow の薄いラッパー。`zsh/` / `git/` / `starship/` を
+`install.sh` は GNU stow の薄いラッパー。`STOW_PACKAGES` に並べたパッケージ
+(`zsh/` / `git/` / `starship/` / `atuin/` / `ghostty/` / `jj/` / `karabiner/` / `bin/` / `homebrew/`) を
 `$HOME` に link し、衝突するファイルは先に `*.backup` へリネームする。
 
 ## なぜ
