@@ -49,7 +49,7 @@ notify-on-command-finish-action = no-bell,notify
 notify-on-command-finish-after = 15s
 
 # ---------- keybinds (splits / tabs) ----------
-# Splits — Ghostty's built-in multiplexing replaces tmux/zellij for casual use.
+# Splits — Ghostty's built-in multiplexing replaces tmux for casual use.
 keybind = cmd+d=new_split:right
 keybind = cmd+shift+d=new_split:down
 keybind = cmd+w=close_surface

@@ -76,7 +76,7 @@ exec zsh -l
 | Cd | zoxide | cd + autojump |
 | Fuzzy | fzf + fzf-tab | 手動補完 |
 | Files TUI | yazi | ranger |
-| Multiplex | zellij | tmux |
+| Multiplex | herdr + tmux | zellij |
 | Runtime | mise | nvm / pyenv / nodebrew |
 | Per-dir env | direnv | 手書きの `.env` source |
 | Python pkgs | uv | pip / poetry / virtualenv |
@@ -147,7 +147,7 @@ brew install git gh ghq fzf jq yq stow direnv mas
 
 # Rust-flavoured CLI
 brew install starship zoxide eza bat fd ripgrep git-delta btop atuin xh \
-             ast-grep yazi zellij procs dust sd hyperfine tokei onefetch \
+             ast-grep yazi tmux procs dust sd hyperfine tokei onefetch \
              zstd
 
 # Runtime + package managers

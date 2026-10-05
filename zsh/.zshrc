@@ -9,7 +9,7 @@
 #   06-direnv       per-directory .envrc loader
 #   10-options      zsh options & history
 #   20-prompt       Starship
-#   30-modern-cli   eza/bat/delta/btop/xh/yazi/zellij/sg
+#   30-modern-cli   eza/bat/delta/btop/xh/yazi/sg
 #   40-fzf          fzf + Ctrl-T / Alt-C bindings (Ctrl-R later)
 #   50-aliases      nav/git/docker/k8s/system
 #   60-functions
