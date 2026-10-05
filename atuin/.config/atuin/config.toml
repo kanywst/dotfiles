@@ -51,6 +51,20 @@ systemd_socket = false
 enabled = true
 # Default is 10% of the disk. A fixed cap is easier to reason about.
 max_disk_usage = "5GB"
+# Commands that print credentials or the whole environment. They stay in history;
+# only their output is dropped. Unanchored regexes, matched anywhere.
+command_filter = [
+    "^(env|printenv|set|export)( |$)",
+    "^cat .*(\\.env|credentials|\\.netrc|\\.pem|\\.key|id_[a-z0-9]+)",
+    "^gh auth (token|status)",
+    "^op (read|item get)",
+    "^security find-(generic|internet)-password",
+    "^kubectl get secrets?( |$)",
+    "^aws (sts|configure|sso)",
+    "^(gcloud|az) .*(print-access-token|get-access-token)",
+    "^(vault|bao) (read|kv get)",
+    "^gpg .*--export-secret",
+]
 
 ## ---------- stats ----------
 [stats]
