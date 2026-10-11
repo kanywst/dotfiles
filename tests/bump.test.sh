@@ -943,8 +943,11 @@ GUMRUN
         # exits before it reaches a spinner — which is what happened the first
         # time this was pointed at the pre-fix revision, where `--only` does not
         # exist yet and the run died on an unknown argument.
-        if [[ "${gum_probes:-0}" -gt 0 ]]; then
-            ok "the gum run really did probe the terminal ($gum_probes replies sent)"
+        # Reaching a spinner is proven by gum's own program start (bracketed
+        # paste on), not by the probe count: gum 2.x no longer sends the
+        # ?2026/?2027 probes at all, so PROBES=0 is a real spinner run there.
+        if [[ "$gum_out" == *$'\e[?2004h'* ]]; then
+            ok "the gum run really did reach a spinner (${gum_probes:-0} probe replies sent)"
         else
             bad "the gum run never reached a spinner, so the next check is vacuous" "$gum_out"
         fi
