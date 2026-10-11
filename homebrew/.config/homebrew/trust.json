@@ -16,6 +16,7 @@
   "trustedcasks": [
     "kanywst/tap/brtc",
     "kanywst/tap/prpr",
+    "kanywst/tap/whosent",
     "kanywst/tap/y509"
   ]
 }
