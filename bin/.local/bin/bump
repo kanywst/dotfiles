@@ -298,7 +298,25 @@ do_npm() {
 do_krew()  { kubectl krew upgrade; }
 do_gh()    { gh extension upgrade --all; }
 do_atuin() { atuin sync -f; }
-do_cargo() { cargo install-update -a; }
+# cargo-update hands every crates.io update to cargo-binstall, and the release
+# binary of binstall is built with its `trust-dns` feature: a bundled resolver
+# that sends EDNS queries and has no fallback. A router that answers EDNS with
+# FORMERR (the macOS resolver retries without it, so everything else works)
+# then fails every cargo update with "DNS error: Form Error". Pinning binstall
+# to a source build without that feature makes it use the system resolver,
+# and the non-default config also makes cargo-update rebuild binstall itself
+# with `cargo install` instead of re-fetching the same prebuilt binary.
+# The list is binstall's default features minus trust-dns. Re-applied every
+# run because the config lives in ~/.cargo, outside the dotfiles. Everything is
+# inline because the step runs in a `bash -c` that only sees exported functions.
+do_cargo() {
+    if command -v cargo-binstall >/dev/null 2>&1; then
+        cargo install-update-config --default-features false \
+            -f static -f rustls -f fancy-no-backtrace -f zstd-thin -f git \
+            cargo-binstall >/dev/null || return
+    fi
+    cargo install-update -a
+}
 do_gup()   { gup update; }
 export -f do_flake do_darwin do_brew do_brew_cask do_rustup do_mise do_npm \
           do_krew do_gh do_atuin do_cargo do_gup

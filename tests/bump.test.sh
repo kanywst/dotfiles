@@ -516,6 +516,47 @@ run -- --only npm
 assert_eq "a broken npm fails the step instead of reporting success" "$RC" "1"
 assert_contains "a broken npm's stderr reaches the reader" "$OUT" "npm is broken"
 
+# --- cargo -----------------------------------------------------------------
+# The prebuilt cargo-binstall carries a bundled resolver that dies on a router
+# answering EDNS with FORMERR, failing every cargo update. bump pins binstall to
+# a source build without trust-dns before cargo-update runs.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub cargo-binstall 'exit 0'
+stub cargo 'echo "CARGO $*"'
+run -- --only cargo
+assert_eq "cargo step succeeds" "$RC" "0"
+CARGOLOG=$(cat "$TMP"/cache/bump/*/cargo.log 2>/dev/null)
+assert_contains "cargo pins binstall's features before updating" "$CARGOLOG" "CARGO install-update -a"
+assert_missing "binstall's pin output stays out of the log" "$CARGOLOG" "install-update-config"
+
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub cargo-binstall 'exit 0'
+# shellcheck disable=SC2016  # literal $1 for the stub.
+stub cargo 'case "$1" in install-update-config) echo "PIN $*" >&2;; *) echo "CARGO $*";; esac'
+run -- --only cargo
+CARGOLOG=$(cat "$TMP"/cache/bump/*/cargo.log 2>/dev/null)
+assert_contains "binstall is pinned without default features" "$CARGOLOG" "--default-features false"
+assert_matches "binstall keeps rustls and git" "$CARGOLOG" "f rustls.*-f git"
+assert_missing "binstall is pinned without trust-dns" "$CARGOLOG" "trust-dns"
+
+reset_stubs
+rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016  # literal $1 for the stub.
+stub cargo 'case "$1" in install-update-config) echo "PIN" >&2;; *) echo "CARGO $*";; esac'
+run -- --only cargo
+CARGOLOG=$(cat "$TMP"/cache/bump/*/cargo.log 2>/dev/null)
+assert_missing "no binstall means nothing to pin" "$CARGOLOG" "PIN"
+
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub cargo-binstall 'exit 0'
+# shellcheck disable=SC2016  # literal $1 for the stub.
+stub cargo 'case "$1" in install-update-config) exit 3;; *) echo "CARGO $*";; esac'
+run -- --only cargo
+assert_eq "a failed binstall pin fails the step" "$RC" "1"
+
 # --- parallel phase --------------------------------------------------------
 reset_stubs
 run -- --skip flake,darwin,brew,brew-cask
