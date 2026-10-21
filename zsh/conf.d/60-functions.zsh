@@ -96,3 +96,23 @@ klog-fzf() {
     pod="$(kubectl get pods --no-headers | fzf | awk '{print $1}')"
     [[ -n "$pod" ]] && kubectl logs -f "$pod"
 }
+
+# Strip all image metadata (EXIF / XMP / C2PA) by re-encoding: `declean a.jpg b.png`
+# Writes <name>_clean.<ext> next to each input and checks no c2pa/jumbf survived.
+# `-auto-orient` bakes rotation into pixels first, so stripping EXIF can't flip the image.
+declean() {
+    if (( $# == 0 )); then echo "usage: declean <image>..." >&2; return 1; fi
+    local f out rc=0
+    for f in "$@"; do
+        [[ -n "${f:e}" ]] || { echo "declean: no extension, skipping $f" >&2; rc=1; continue; }
+        out="${f:r}_clean.${f:e}"
+        magick "$f" -auto-orient -strip -quality 95 "$out" || { rc=1; continue; }
+        if exiftool -a "$out" | grep -qiE 'c2pa|jumbf'; then
+            echo "declean: provenance still present in $out" >&2
+            rc=1
+        else
+            echo "ok: $out"
+        fi
+    done
+    return $rc
+}
