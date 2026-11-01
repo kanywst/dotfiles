@@ -207,7 +207,7 @@ export -f brew_trust_probe
 # doesn't write root-owned files into ~/.cache/nix. USER + --impure are required
 # because flake.nix resolves the config name from `builtins.getEnv "USER"`;
 # without them eval falls back to "user" and the `.#$who` attribute (e.g.
-# darwinConfigurations.takumaniwa) won't exist.
+# darwinConfigurations.<user>) won't exist.
 do_darwin() {
     cd "$DOTFILES_DIR" || return 1
     local path who rc; path=$PATH; who=$(whoami)
