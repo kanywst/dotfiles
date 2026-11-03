@@ -13,6 +13,19 @@
 #
 # Skipped inside herdr: the proxy puts the shell on a nested pty, so herdr sees
 # `atuin` as the pane's foreground process and never detects the agent in it.
+#
+# Skipped when $TMPDIR/atuin-$UID exists but isn't ours (root-owned, made by
+# launchd when the daemon socket lived there; see [daemon] socket_path in
+# atuin/config.toml). The proxy would refuse it and print an error in every
+# new shell; print one hint instead and fall back to a plain shell.
+
+_atuin_pty_dir="${TMPDIR:-/tmp}"
+_atuin_pty_dir="${_atuin_pty_dir%/}/atuin-${UID}"
+if [[ -e "$_atuin_pty_dir" && ! -O "$_atuin_pty_dir" ]]; then
+    [[ -o interactive ]] && print -u2 "atuin: pty-proxy skipped, $_atuin_pty_dir is not yours. Fix: sudo rm -rf '$_atuin_pty_dir'"
+    export ATUIN_PTY_PROXY_FAILED=1
+fi
+unset _atuin_pty_dir
 
 if command -v atuin &>/dev/null && [[ "${HERDR_ENV:-}" != "1" ]]; then
     _atuin_pty_cache="${XDG_CACHE_HOME:-$HOME/.cache}/atuin/pty-proxy-init.zsh"

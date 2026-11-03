@@ -36,8 +36,14 @@ autostart = true
 # Top-level sync_frequency above accepts duration strings; the two fields
 # parse differently in atuin's settings.rs — don't unify them.
 sync_frequency = 300
-# socket_path defaults to ~/.local/share/atuin/atuin.sock already, and Atuin's
-# Rust parser does not expand a literal `~`. Omit and let the default win.
+# Keep the socket out of $TMPDIR. The default is $TMPDIR/atuin-<uid>/atuin.sock,
+# and the launchd agent pins it as a `Sockets` entry, so at login launchd (root)
+# creates atuin-<uid>/ root-owned. The pty-proxy keeps its sockets in that same
+# directory and refuses a root-owned one ("is not owned by the current user").
+# ~/.local/share/atuin is ours and survives reboots, so launchd never creates
+# it. Atuin 18.24+ expands `~` here. Changing this needs `atuin daemon restart`
+# so the agent's plist is rewritten.
+socket_path = "~/.local/share/atuin/atuin.sock"
 systemd_socket = false
 
 ## ---------- output capture (18.21+) ----------
