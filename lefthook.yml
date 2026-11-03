@@ -35,10 +35,15 @@ pre-commit:
       run: tests/trust-coverage.sh
     gitleaks:
       run: gitleaks protect --staged --no-banner --redact
+    kwangmyong:
+      run: kwangmyong hook pre-commit
 
 pre-push:
   parallel: true
   commands:
+    kwangmyong:
+      run: kwangmyong hook pre-push
+      use_stdin: true
     actionlint:
       glob: ".github/workflows/*.{yml,yaml}"
       run: actionlint {push_files}
