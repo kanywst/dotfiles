@@ -1037,9 +1037,14 @@ while True:
 os.waitpid(pid, 0)
 sys.stdout.write(out.decode(errors="replace"))
 WIDE
+    # gum alone, never its whole directory: that is /opt/homebrew/bin, and with
+    # it on PATH a guard that fails open (a mutation the harness applies) found
+    # the machine's real brew, nix and mise and ran them from inside the test,
+    # in a pty session the watchdog could not kill. One run hung for two hours.
+    mkdir -p "$TMP/realgum" && ln -sf "$(command -v gum)" "$TMP/realgum/gum"
     cat >"$TMP/widerun.sh" <<WIDERUN
 sleep 0.5
-export PATH="$STUB:\$(dirname "\$(command -v gum)"):$SYSBIN"
+export PATH="$STUB:$TMP/realgum:$SYSBIN"
 export HOME="$TMP" TERM=xterm-256color
 export XDG_CACHE_HOME="$TMP/cache" XDG_DATA_HOME="$TMP/data"
 export RUSTUP_HOME="$TMP/rustup" DOTFILES_DIR="$TMP/dotfiles" BUMP_TIMEOUT=20
@@ -1074,16 +1079,11 @@ fi
 # typed input: a prompt full of "2026;2$y2027;2$y…" after the run. This checks
 # the drain that bump does after every spinner actually empties that queue.
 if command -v python3 >/dev/null 2>&1; then
-    cat >"$TMP/drain.sh" <<'DRAIN'
-drain_tty() {
-    { : </dev/tty; } 2>/dev/null || return 0
-    saved=$(stty -g </dev/tty 2>/dev/null)
-    if [ -n "$saved" ]; then
-        stty -icanon min 0 time 0 </dev/tty 2>/dev/null
-        dd bs=4096 count=1 </dev/tty >/dev/null 2>&1
-        stty "$saved" </dev/tty 2>/dev/null
-    fi
-}
+    # bump's own drain_tty, cut out of the script under test. This used to be a
+    # hand-written copy, so the check passed whatever bump's drain did: deleting
+    # the drain from bump outright survived the mutation harness.
+    sed -n '/^drain_tty() {/,/^}/p' "$BUMP" >"$TMP/drain.sh"
+    cat >>"$TMP/drain.sh" <<'DRAIN'
 sleep 1
 [ "${1:-}" = "drain" ] && drain_tty
 # Measured with a non-blocking read rather than `read -t`, because bash 3.2
@@ -1126,11 +1126,32 @@ PY
         bad "control: expected leftover bytes without a drain, got '${left_without:-}'"
     fi
     assert_eq "drain_tty empties the terminal's replies" "${left_with:-x}" "0"
-    # And the same thing end to end, through gum itself: a pty that answers the
-    # DECRQM probes the way a real terminal does, with bump driving real
-    # `gum spin` calls. This is the exact reported failure, so it is worth the
-    # cost of being the one test that needs gum installed.
-    if command -v gum >/dev/null 2>&1; then
+    # And the same thing end to end: a pty that answers the DECRQM probes the
+    # way a real terminal does, with bump driving `gum spin`. Through a fake gum
+    # that probes the way gum 1.x did (once as the spinner starts, once as it
+    # exits), not the real one: gum 2.x sends no probes at all, so against it
+    # these checks had nothing to catch, and deleting bump's drain, its mute, or
+    # the drain's wait all survived the mutation harness. bump has to keep
+    # coping with a terminal program that probes; this pins that it does.
+    mkdir -p "$TMP/fakegum"
+    cat >"$TMP/fakegum/gum" <<'FAKEGUM'
+#!/bin/sh
+case "$1" in
+    spin)
+        shift
+        while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+        shift
+        printf '\033[?2004h\033[?2026$p\033[?2027$p' >/dev/tty
+        sleep 0.3   # still "drawing" when the terminal's answer lands
+        "$@"; rc=$?
+        printf '\033[?2026$p\033[?2027$p\033[?2004l' >/dev/tty
+        exit $rc ;;
+    style)
+        echo "[gum style]" ;;
+esac
+FAKEGUM
+    chmod +x "$TMP/fakegum/gum"
+    {
         cat >"$TMP/responder.py" <<'RESP'
 import os, pty, select, sys
 pid, fd = pty.fork()
@@ -1174,7 +1195,7 @@ stty "\$saved" </dev/tty 2>/dev/null
 printf '\nTTYLEFT=%d\n' "\$n"
 GUMRUN
         reset_stubs
-        gum_out=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):$SYSBIN" \
+        gum_out=$(STUB_PATH="$STUB:$TMP/fakegum:$SYSBIN" \
             python3 "$TMP/responder.py" "$TMP/gumrun.sh" 2>/dev/null | tr -d '\r')
         gum_left=$(printf '%s' "$gum_out" | sed -n 's/.*TTYLEFT=\([0-9]*\).*/\1/p' | tail -1)
         gum_probes=$(printf '%s' "$gum_out" | sed -n 's/.*PROBES=\([0-9]*\).*/\1/p' | tail -1)
@@ -1182,10 +1203,9 @@ GUMRUN
         # exits before it reaches a spinner — which is what happened the first
         # time this was pointed at the pre-fix revision, where `--only` does not
         # exist yet and the run died on an unknown argument.
-        # Reaching a spinner is proven by gum's own program start (bracketed
-        # paste on), not by the probe count: gum 2.x no longer sends the
-        # ?2026/?2027 probes at all, so PROBES=0 is a real spinner run there.
-        if [[ "$gum_out" == *$'\e[?2004h'* ]]; then
+        # The fake gum probes on every spinner, so a run that reached one
+        # answered at least one probe.
+        if [[ "$gum_out" == *$'\e[?2004h'* && "${gum_probes:-0}" -gt 0 ]]; then
             ok "the gum run really did reach a spinner (${gum_probes:-0} probe replies sent)"
         else
             bad "the gum run never reached a spinner, so the next check is vacuous" "$gum_out"
@@ -1230,7 +1250,7 @@ sys.stdout.write(out.decode(errors="replace"))
 LAGGY
         reset_stubs
         # shellcheck disable=SC2016  # `$y` is literal here: it is what grep looks for.
-        _echoed=$(STUB_PATH="$STUB:$(dirname "$(command -v gum)"):$SYSBIN" \
+        _echoed=$(STUB_PATH="$STUB:$TMP/fakegum:$SYSBIN" \
             python3 "$TMP/laggy.py" "$TMP/gumrun.sh" 2>/dev/null \
             | tr -d '\r' | grep -c '\[?202[67];2\$y')
         if [[ "${_echoed:-x}" == 0 ]]; then
@@ -1239,9 +1259,7 @@ LAGGY
             bad "a slow terminal's replies are echoed into the output" \
                 "echoed occurrences: ${_echoed:-<empty>}"
         fi
-    else
-        printf '%s  · skipped: end-to-end probe test needs gum%s\n' "$dim" "$off"
-    fi
+    }
 else
     printf '%s  · skipped: pty test needs python3%s\n' "$dim" "$off"
 fi
