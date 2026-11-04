@@ -151,7 +151,7 @@
             taps = [
               "anomalyco/tap"        # opencode
               "charmbracelet/tap"    # crush
-              "kanywst/tap"          # approval-hub, y509
+              "kanywst/tap"          # own tools: approval-hub, mcp-opa-authz, wtfi*, y509, brtc, ...
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
             ];
@@ -300,6 +300,9 @@
               "anomalyco/tap/opencode"
               "charmbracelet/tap/crush"
               "kanywst/tap/approval-hub"
+              "kanywst/tap/mcp-opa-authz"
+              "kanywst/tap/wtfi2"
+              "kanywst/tap/wtfi3"
               "ory/tap/cli"
               "oven-sh/bun/bun"
             ];
@@ -312,7 +315,13 @@
               "karabiner-elements"
               "multipass"
               "ollama-app"
-              # third-party taps
+              # third-party taps. All own tools; the five above y509 were installed
+              # and trusted by hand but never declared, so a fresh Mac lost them.
+              "kanywst/tap/brtc"
+              "kanywst/tap/howbad"
+              "kanywst/tap/prpr"
+              "kanywst/tap/sweep"
+              "kanywst/tap/whosent"
               "kanywst/tap/y509"
             ];
             # App Store apps (needs `mas`, declared above). Declared in the `let`
