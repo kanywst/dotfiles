@@ -320,9 +320,9 @@
               # third-party taps. All own tools; the five above y509 were installed
               # and trusted by hand but never declared, so a fresh Mac lost them.
               "kanywst/tap/brtc"
+              "kanywst/tap/chonk"
               "kanywst/tap/howbad"
               "kanywst/tap/prpr"
-              "kanywst/tap/sweep"
               "kanywst/tap/whosent"
               "kanywst/tap/y509"
             ];
