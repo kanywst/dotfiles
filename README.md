@@ -157,7 +157,8 @@ brew install mise uv bun
 brew install carapace lefthook gitleaks shellcheck actionlint
 
 # LLM CLI
-brew install --cask claude-code codex
+brew install --cask codex
+curl -fsSL https://claude.ai/install.sh | bash   # Claude Code, native (self-updating)
 
 # Modern VCS + keymap
 brew install jj

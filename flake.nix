@@ -307,7 +307,9 @@
               "oven-sh/bun/bun"
             ];
             casks = [
-              "claude-code"
+              # No "claude-code": Claude Code comes from its native installer
+              # (~/.local/bin/claude, self-updating). The cask shipped alongside
+              # it lagged behind and lost the PATH race anyway.
               "codex"
               "copilot-cli"
               "font-hack-nerd-font"
