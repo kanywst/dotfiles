@@ -37,8 +37,14 @@ export HOMEBREW_NO_ENV_HINTS=1
 typeset -U path PATH
 
 # Higher-priority entries first.
-# Rancher Desktop's docker shim lives in ~/.rd/bin; keep before brew so `docker`
-# resolves there if RD is running.
+# Rancher Desktop's ~/.rd/bin goes LAST, not first. It is load-bearing for
+# `docker`/`nerdctl`/`docker compose`, which nothing else on PATH provides, so
+# appending keeps those working. But it also ships its own kubectl and helm,
+# and in front of brew those won: the shell ran RD's kubectl 1.37.0 / helm 4.2.3
+# while flake.nix declares, and bump upgrades, brew's 1.37.2 / 4.3.1.
+# Dropped from the inherited PATH first: `typeset -U` keeps the FIRST copy, so a
+# nested shell (or `exec zsh`) inheriting the old order would keep RD in front.
+path=(${path:#$HOME/.rd/bin})
 path=(
     "$HOME/.local/bin"
     "$HOME/.cargo/bin"
@@ -47,8 +53,8 @@ path=(
     "$BREW_PREFIX/opt/openssl/bin"
     "$HOME/.yarn/bin"
     "$HOME/.config/yarn/global/node_modules/.bin"
-    "$HOME/.rd/bin"
     $path
+    "$HOME/.rd/bin"
 )
 
 # Go — mise activate handles GOROOT/GOPATH; modern Go (>= 1.10) auto-detects
