@@ -47,7 +47,7 @@ exec zsh -l
 - Ghostty: terminal config tracked (theme, splits, mac-alt)
 - lefthook + gitleaks: fast parallel pre-commit hooks + secret scanning
 - claude-code / codex / opencode: agent CLIs in the shell
-- `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go) with gum spinners
+- `bump`: one-shot "update everything" CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go/uv) with gum spinners
 - jj (Jujutsu): git-compatible modern VCS, colocated with git per-repo
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl arrow keys
 
@@ -405,10 +405,7 @@ everything in one run. This box is nix-darwin declarative, so the system path is
 `nix flake update` + `darwin-rebuild switch` — not a bare `brew upgrade`; the
 per-user managers nix doesn't own are bumped alongside it.
 
-Steps run in two phases. The ordered, root-hungry ones go first and serially
-(`flake` → `darwin` → `brew` → `brew-cask`); everything after that is
-independent, so it runs concurrently and each result prints the moment that
-tool finishes. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rather
+Steps run in two phases. The ordered, root-hungry ones go first and serially (`flake` → `darwin` → `brew` → `brew-cask` → `rustup` → `mise`; the last two replace the toolchains cargo and npm run on, so they must finish first); everything after that is independent, so it runs concurrently and each result prints the moment that tool finishes. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rather
 than the screen — a failing step gets its log tail printed inline, and the last
 20 runs are kept.
 
@@ -419,9 +416,9 @@ terminal, since gum grows a box to its longest line and does not wrap.
 
 | Cmd | Action |
 | --- | --- |
-| `bump` | update everything: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
+| `bump` | update everything: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go/uv |
 | `bump -n` | show the plan and what would be skipped, run nothing |
-| `bump --only nix,brew` | run only these steps |
+| `bump --only flake,brew` | run only these steps |
 | `bump --skip atuin` | run everything except these |
 | `bump -l` | list the step names |
 | `bump -V` | print the version and the revision it came from |
@@ -434,6 +431,10 @@ need root (`darwin`, `brew-cask`) are skipped cleanly and the rest still run.
 
 `cargo`/`go` binaries are covered by the `cargo` and `gup` steps, which skip
 themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
+
+Casks are upgraded with `--greedy-auto-updates`: a plain `brew upgrade --cask` skips every cask that claims to update itself, and several here never did. `mise` runs against the dotfiles checkout (`mise -C`), because `mise upgrade` only sees the configs of the directory it starts in and `bump` is usually run from `$HOME`. `npm` targets the npm a shell in `$HOME` would use (a global mise node if one is pinned, else Homebrew's), not whichever node the current directory activates. `uv` runs `uv tool upgrade --all`.
+
+After the summary, `bump` names any binary earlier on `PATH` than Homebrew's copy of the same tool (a stale `~/.local/bin/jq`, Rancher Desktop's kubectl). Every step can be green while the shell keeps running a copy no step updates, so this is the only place that shows up.
 
 [cargo-update]: https://github.com/nabijaczleweli/cargo-update
 [gup]: https://github.com/nao1215/gup

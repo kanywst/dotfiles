@@ -62,7 +62,7 @@ touch "$TMP/dotfiles/flake.nix"
 stub() { printf '%s\n' "#!/bin/sh" "$2" >"$STUB/$1"; chmod +x "$STUB/$1"; }
 
 # Every managed tool, so "nothing is installed" can actually mean that.
-MANAGED="nix rustup mise npm kubectl gh atuin cargo cargo-install-update gup brew darwin-rebuild"
+MANAGED="nix rustup mise npm kubectl gh atuin cargo cargo-install-update gup uv brew darwin-rebuild"
 
 # A system PATH with those filtered out. `$STUB:/usr/bin:/bin` is NOT a clean
 # room: a GitHub runner ships a real `gh` in /usr/bin, so the tests that remove
@@ -98,7 +98,7 @@ reset_stubs() {
     rm -f "$STUB"/*
     $HAVE_TIMEOUT && ln -sf "$(command -v timeout || command -v gtimeout)" "$STUB/timeout"
     local t
-    for t in nix rustup mise kubectl gh cargo cargo-install-update gup darwin-rebuild brew npm atuin; do
+    for t in nix rustup mise kubectl gh cargo cargo-install-update gup uv darwin-rebuild brew npm atuin; do
         stub "$t" 'exit 0'
     done
     stub whoami 'echo tester'
@@ -174,7 +174,7 @@ assert_eq "the system PATH mirror still has the coreutils bump needs" \
 reset_stubs
 
 run -- --list
-assert_eq "--list prints every step, one per line" "$(printf '%s' "$OUT" | grep -c .)" "12"
+assert_eq "--list prints every step, one per line" "$(printf '%s' "$OUT" | grep -c .)" "13"
 assert_contains "--list includes the cask step" "$OUT" "brew-cask"
 
 run -- --help
@@ -516,6 +516,91 @@ run -- --only npm
 assert_eq "a broken npm fails the step instead of reporting success" "$RC" "1"
 assert_contains "a broken npm's stderr reaches the reader" "$OUT" "npm is broken"
 
+# The npm step must not follow the caller's cwd: mise puts a per-directory node
+# first on PATH, so `bump` from inside a mise project upgraded that node's empty
+# global prefix and reported success. With no global mise node it uses brew's.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+mkdir -p "$TMP/brewpfx/bin"
+# shellcheck disable=SC2016  # the fake npm's own $1/$*.
+printf '%s\n' '#!/bin/sh' 'case "$1" in outdated) echo "/p/node_modules/foo:foo@2.0.0:foo@1.0.0:foo@2.0.0"; exit 1;; esac' 'echo "BREWNPM $*"' >"$TMP/brewpfx/bin/npm"; chmod +x "$TMP/brewpfx/bin/npm"
+# shellcheck disable=SC2016  # the stub's own $1.
+stub brew 'case "$1" in --prefix) echo "'"$TMP/brewpfx"'";; trust) exit 1;; esac; exit 0'
+stub mise 'exit 1'   # `mise which npm`: no node pinned for $HOME
+stub npm 'echo "PATHNPM $*"'
+run -- --only npm
+NPMLOG=$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)
+assert_contains "npm uses Homebrew's npm when mise pins no global node" "$NPMLOG" "BREWNPM install -g foo@latest"
+assert_missing "npm ignores the cwd's npm when brew has one" "$NPMLOG" "PATHNPM"
+
+reset_stubs
+rm -rf "$TMP/cache/bump"
+mkdir -p "$TMP/misenode/bin"
+# shellcheck disable=SC2016  # the fake npm's own $1/$*.
+printf '%s\n' '#!/bin/sh' 'case "$1" in outdated) echo "/p/node_modules/foo:foo@2.0.0:foo@1.0.0:foo@2.0.0"; exit 1;; esac' 'echo "MISENPM $*"' >"$TMP/misenode/bin/npm"; chmod +x "$TMP/misenode/bin/npm"
+# shellcheck disable=SC2016
+stub mise 'if [ "$3" = which ]; then echo "'"$TMP/misenode/bin/npm"'"; exit 0; fi; exit 0'
+# shellcheck disable=SC2016
+stub brew 'case "$1" in --prefix) echo "'"$TMP/brewpfx"'";; trust) exit 1;; esac; exit 0'
+run -- --only npm
+NPMLOG=$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)
+assert_contains "npm prefers the node a global mise config pins" "$NPMLOG" "MISENPM install -g foo@latest"
+
+# --- mise -------------------------------------------------------------------
+# `mise upgrade` only sees the configs of the directory it starts in, and bump
+# runs from $HOME: every run said "All tools are up to date" while the dotfiles
+# mise.toml sat on an old node LTS.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub mise 'echo "MISE $*"'
+run -- --only mise
+assert_contains "mise upgrades against the dotfiles checkout, not the cwd" \
+    "$(cat "$TMP"/cache/bump/*/mise.log 2>/dev/null)" "MISE -C $TMP/dotfiles upgrade"
+
+# --- casks ------------------------------------------------------------------
+# A bare `brew upgrade --cask` skips every auto_updates cask, and several never
+# updated themselves (copilot-cli was 81 releases behind).
+reset_stubs
+rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in trust) exit 1;; esac; echo "BREW $*"'
+run -- --only brew-cask
+assert_contains "the cask step includes auto_updates casks" \
+    "$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)" "BREW upgrade --cask --greedy-auto-updates"
+
+# --- uv ---------------------------------------------------------------------
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub uv 'echo "UV $*"'
+run -- --only uv
+assert_contains "uv upgrades every installed tool" \
+    "$(cat "$TMP"/cache/bump/*/uv.log 2>/dev/null)" "UV tool upgrade --all"
+reset_stubs
+rm -f "$STUB/uv"
+run -- --only uv
+assert_contains "uv is skipped when it is not installed" "$OUT" "uv not installed"
+
+# --- PATH shadowing -----------------------------------------------------------
+# Every step can be green while the shell runs an older copy from earlier on
+# PATH (jq 1.7.1 in ~/.local/bin over brew's 1.8.2, for real).
+reset_stubs
+mkdir -p "$TMP/shadow" "$TMP/shadowpfx/bin"
+for b in jq rustup same; do
+    printf '%s\n' '#!/bin/sh' 'exit 0' >"$TMP/shadowpfx/bin/$b"; chmod +x "$TMP/shadowpfx/bin/$b"
+done
+for b in jq rustup; do
+    printf '%s\n' '#!/bin/sh' 'exit 0' >"$TMP/shadow/$b"; chmod +x "$TMP/shadow/$b"
+done
+ln -sf "$TMP/shadowpfx/bin/same" "$TMP/shadow/same"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in --prefix) echo "'"$TMP/shadowpfx"'";; trust) exit 1;; esac; exit 0'
+run PATH="$TMP/shadow:$STUB:$TMP/shadowpfx/bin:$SYSBIN" -- --only mise
+assert_contains "a binary shadowing brew's copy is named" "$OUT" "shadow/jq"
+assert_missing "a symlink to brew's own copy is not a shadow" "$OUT" "shadow/same"
+assert_missing "a self-updating copy on the allow list is not reported" "$OUT" "shadow/rustup"
+run PATH="$STUB:$TMP/shadowpfx/bin:$TMP/shadow:$SYSBIN" -- --only mise
+assert_missing "a copy after brew on PATH is not a shadow" "$OUT" "shadows"
+
 # --- cargo -----------------------------------------------------------------
 # The prebuilt cargo-binstall carries a bundled resolver that dies on a router
 # answering EDNS with FORMERR, failing every cargo update. bump pins binstall to
@@ -563,8 +648,15 @@ run -- --skip flake,darwin,brew,brew-cask
 assert_eq "the parallel phase exits 0 when every step passes" "$RC" "0"
 assert_contains "the parallel phase announces itself" "$OUT" "in parallel:"
 # Results arrive out of order, so each needs its own step tag to be identifiable.
-assert_eq "every parallel step reports exactly one result" \
-    "$(printf '%s' "$OUT" | grep -cE '^  (✓|✗) \[[0-9]+/8\]')" "8"
+# 9 = rustup and mise (serial) + the 7 parallel steps.
+assert_eq "every step reports exactly one result" \
+    "$(printf '%s' "$OUT" | grep -cE '^  (✓|✗) \[[0-9]+/9\]')" "9"
+# rustup swaps the toolchain cargo builds with, and mise the node npm runs on,
+# so neither may share the parallel phase with the steps that consume them.
+PARLINE=$(printf '%s\n' "$OUT" | grep 'in parallel:')
+assert_missing "rustup is not in the parallel phase" "$PARLINE" "rustup"
+assert_missing "mise is not in the parallel phase" "$PARLINE" "mise"
+assert_contains "uv tools run in the parallel phase" "$PARLINE" "uv tools"
 
 # --- logs ------------------------------------------------------------------
 reset_stubs

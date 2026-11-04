@@ -5,8 +5,9 @@
 # HOMEBREW_NO_AUTO_UPDATE=1, "nix-darwin owns reconciliation"). So the canonical
 # system update is `nix flake update` + `darwin-rebuild switch`, NOT a bare
 # `brew upgrade`. nix doesn't manage the per-user tool managers though
-# (rustup / mise / npm-g / krew / gh extensions / cargo / go), so those are
-# bumped here too.
+# (rustup / mise / npm-g / krew / gh extensions / cargo / go / uv tools), so
+# those are bumped here too. After the summary, any binary on PATH that shadows
+# the Homebrew copy bump just updated is named, since no step would notice it.
 #
 # Runs every step unattended — no per-step confirmation. The only interactive
 # point is sudo, which is asked for up front and then kept warm for the whole
@@ -16,7 +17,8 @@
 # npm` never prompts.
 #
 # Steps run in two phases. The serial phase (nix flake → nix-darwin → brew →
-# brew casks) is ordered and root-hungry. Everything after it is independent, so
+# brew casks → rustup → mise) is ordered, root-hungry, or replaces a toolchain
+# a later step runs on. Everything after it is independent, so
 # it runs concurrently and each result prints the moment that tool finishes.
 #
 # UI: when `gum` is present each serial step gets a spinner. Every step's output
@@ -35,7 +37,7 @@
 # Usage:
 #   bump                    # update everything (pretty)
 #   bump -n|--dry-run       # show the plan and what would be skipped, run nothing
-#   bump --only nix,brew    # run only these steps (comma-separated)
+#   bump --only flake,brew  # run only these steps (comma-separated)
 #   bump --skip atuin,npm   # run everything except these
 #   bump -l|--list          # list the step names
 #   bump -v|--verbose       # stream every command's output live, serially
@@ -97,14 +99,20 @@ STEPS=(
     "darwin|🍎|nix-darwin switch|globe|serial|yes"
     "brew|🍺|homebrew formulae|meter|serial|no"
     "brew-cask|🍻|homebrew casks|meter|serial|yes"
-    "rustup|🦀|rustup|monkey|par|no"
-    "mise|🧰|mise|minidot|par|no"
+    # rustup and mise are serial on purpose: they replace the toolchains the
+    # parallel steps run on. In parallel, `rustup update` swapped the stable
+    # toolchain out from under the `cargo install` that rebuilds cargo-binstall
+    # from source (3+ minutes, see do_cargo), and `mise upgrade` can move the
+    # node an npm step is mid-install with.
+    "rustup|🦀|rustup|monkey|serial|no"
+    "mise|🧰|mise|minidot|serial|no"
     "npm|📦|npm globals|line|par|no"
     "krew|☸️|krew|points|par|no"
     "gh|🐙|gh extensions|pulse|par|no"
     "atuin|🐢|atuin sync|moon|par|no"
     "cargo|🦞|cargo bins|dot|par|no"
     "gup|🐹|go bins|dot|par|no"
+    "uv|🐍|uv tools|dot|par|no"
 )
 
 # ---- step bodies ---------------------------------------------------------
@@ -269,17 +277,55 @@ do_brew_cask() {
     # independent by design (a failed formula step does not stop this one), so
     # each has to be able to explain its own failure.
     brew_trust_probe || return 1
-    brew upgrade --cask
+    # --greedy-auto-updates: a bare `brew upgrade --cask` skips every cask that
+    # declares `auto_updates true`, on the theory that the app updates itself.
+    # Several here never did: copilot-cli sat at 1.0.24 against 1.0.105 and
+    # Karabiner-Elements at 16.0.0 against 16.3.0 (checked 2026-11-04), with
+    # every run reporting the cask step green. An app that did self-update just
+    # gets reinstalled at the same version, which costs a download, not a break.
+    # Not --greedy: that also pulls in `version :latest` casks, which have no
+    # version to compare and so reinstall on every single run.
+    brew upgrade --cask --greedy-auto-updates
 }
 
 do_rustup() { rustup update; }
-do_mise()   { mise upgrade; }
+
+# Scoped to the dotfiles checkout, not the caller's cwd. `mise upgrade` only
+# sees the config files of the directory it starts in (plus the global one), and
+# bump is run from $HOME, where there is no config: every run logged "All tools
+# are up to date" while ~/dotfiles/mise.toml's `node = "lts"` sat on the old LTS.
+# The global config is always in scope, so this covers it too.
+do_mise() {
+    local dir=$HOME
+    [[ -d "$DOTFILES_DIR" ]] && dir=$DOTFILES_DIR
+    mise -C "$dir" upgrade
+}
+
+# Which npm is "the" npm depends on cwd: mise puts a per-directory node first on
+# PATH, so bump started inside a mise project upgraded that node's (empty)
+# global prefix instead of the one the shell uses everywhere else, and still
+# reported success. Resolve it the way a shell in $HOME would: mise's node if a
+# global mise config pins one, else Homebrew's (where the globals live today),
+# else whatever is on PATH. The chosen npm's directory goes first on PATH
+# because npm is a `#!/usr/bin/env node` script and would otherwise run under
+# the cwd's node anyway.
+npm_for_home() {
+    local p prefix
+    p=$(mise -C "$HOME" which npm 2>/dev/null) && [[ -x "$p" ]] && { printf '%s\n' "$p"; return 0; }
+    prefix=$(brew --prefix 2>/dev/null) && [[ -n "$prefix" && -x "$prefix/bin/npm" ]] \
+        && { printf '%s\n' "$prefix/bin/npm"; return 0; }
+    command -v npm
+}
+export -f npm_for_home
 
 # `npm update -g` stays within semver ranges, missing major bumps (ncu 16→22).
 # Re-install each globally-outdated package at @latest to cross majors too.
 do_npm() {
-    local out rc
-    out=$(npm outdated -g --parseable --depth=0); rc=$?
+    local out rc npm_bin
+    npm_bin=$(npm_for_home) || return 127
+    export PATH="${npm_bin%/*}:$PATH"   # own bash -c subshell; scope is this step.
+    echo "using $npm_bin"
+    out=$("$npm_bin" outdated -g --parseable --depth=0); rc=$?
     # `npm outdated` exits 1 when something IS outdated, so only >1 is a real
     # failure. This used to be `2>/dev/null` with the status dropped, which made
     # a broken npm indistinguishable from "nothing to do" and reported ✓.
@@ -292,7 +338,7 @@ do_npm() {
         [[ -n "$name" ]] && specs+=("${name}@latest")
     done < <(printf '%s\n' "$out" | awk -F: 'NF > 1 {print $4}' | sed 's/@[^@]*$//')
     ((${#specs[@]} == 0)) && { echo "nothing outdated"; return 0; }
-    npm install -g "${specs[@]}"
+    "$npm_bin" install -g "${specs[@]}"
 }
 
 do_krew()  { kubectl krew upgrade; }
@@ -318,8 +364,11 @@ do_cargo() {
     cargo install-update -a
 }
 do_gup()   { gup update; }
+# `uv tool install` CLIs (semgrep here) live in their own venvs that no other
+# step touches, so before this step they never moved.
+do_uv()    { uv tool upgrade --all; }
 export -f do_flake do_darwin do_brew do_brew_cask do_rustup do_mise do_npm \
-          do_krew do_gh do_atuin do_cargo do_gup
+          do_krew do_gh do_atuin do_cargo do_gup do_uv
 
 # ---- guards: is this step applicable on this machine? --------------------
 # Each sets SKIP_REASON before returning false, so a skip line says which of
@@ -350,6 +399,7 @@ g_npm()    { have npm || _missing npm; }
 g_gh()     { have gh || _missing gh; }
 g_cargo()  { have cargo-install-update || _missing "cargo-install-update (cargo install cargo-update)"; }
 g_gup()    { have gup || _missing "gup (go install github.com/nao1215/gup@latest)"; }
+g_uv()     { have uv || _missing uv; }
 
 # A rustup shim can exist with no toolchains behind it (rust installed through
 # mise or nix), where `rustup update` just errors every run.
@@ -758,7 +808,10 @@ join_with() { # sep item...
 # the first time this was "fixed". `stty size </dev/tty` reads the real winsize.
 box_width() {
     local c
-    c=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2)
+    # Braced: with no controlling terminal the `</dev/tty` itself fails, and
+    # bash reports a failed redirection before the command's own 2>/dev/null
+    # applies, so every box printed "/dev/tty: Device not configured" first.
+    c=$({ stty size </dev/tty; } 2>/dev/null | cut -d' ' -f2)
     [[ "$c" =~ ^[0-9]+$ ]] || c=$(tput cols 2>/dev/null)
     [[ "$c" =~ ^[0-9]+$ ]] || c="${COLUMNS:-}"
     [[ "$c" =~ ^[0-9]+$ ]] || c=80
@@ -908,6 +961,46 @@ summary() {
         printf '%s\n' "${rows[@]:2}"
     fi
     printf '%s  · logs: %s%s\n' "$D" "$LOG_DIR" "$X"
+}
+
+# Every step can be green while the shell keeps running something no step
+# touches: a copy of the same tool earlier on PATH than Homebrew's. That was
+# real on 2026-11-04: brew had jq 1.8.2, yq 4.54 and uv 0.13 up to date, and
+# the shell ran jq 1.7.1, yq 4.44 and uv 0.10 from ~/.local/bin (webi and
+# astral installers, 2024 and early 2026), plus Rancher Desktop's older
+# kubectl/helm. Nothing failed, so nothing said so. This names them.
+#
+# Skipped on purpose: mise's directories (per-directory pins, shadowing is their
+# job) and anything under the brew prefix itself. SHADOW_OK lists copies that a
+# step above already keeps current: krew installs itself into ~/.krew/bin and the
+# krew step upgrades it; rustup self-updates in the rustup step.
+SHADOW_OK=" kubectl-krew rustup "
+shadow_report() {
+    local prefix brewbin d f b
+    local -a hits=()
+    have brew || return 0
+    prefix=$(brew --prefix 2>/dev/null) || return 0
+    [[ -n "$prefix" && -d "$prefix/bin" ]] || return 0
+    brewbin="$prefix/bin"
+    local IFS=:
+    for d in $PATH; do
+        [[ "$d" == "$brewbin" ]] && break
+        case "$d" in ""|"$prefix"|"$prefix"/*|*/mise/*) continue ;; esac
+        for f in "$d"/*; do
+            b=${f##*/}
+            [[ -f "$f" && -x "$f" && -x "$brewbin/$b" ]] || continue
+            [[ "$f" -ef "$brewbin/$b" ]] && continue
+            [[ "$SHADOW_OK" == *" $b "* ]] && continue
+            hits+=("$f")
+        done
+    done
+    ((${#hits[@]})) || return 0
+    printf '%s  ⚠️  bump updated the Homebrew copy, but your PATH runs another one first:%s\n' "$R" "$X"
+    local tilde='~'   # a literal `~` in the replacement is tilde-expanded back
+    for f in "${hits[@]}"; do
+        printf '%s      %-40s shadows %s%s\n' "$D" "${f/#"$HOME"/$tilde}" "${brewbin}/${f##*/}" "$X"
+    done
+    printf '%s      remove the copy, or reorder PATH, so the updated one is what runs.%s\n' "$D" "$X"
 }
 
 # Keep the last 20 runs. Names are timestamps, so no spaces and no glob chars.
@@ -1083,6 +1176,7 @@ done
 ((${#PAR_IDX[@]})) && run_parallel
 
 summary $((SECONDS - start))
+shadow_report
 date +%s >"$LOG_ROOT/.last" 2>/dev/null
 prune_logs
 # Once more at the end: the per-spinner drain above is the fix, this is the

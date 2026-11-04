@@ -47,7 +47,7 @@ exec zsh -l
 - Ghostty: ターミナル設定を tracked (テーマ・split・mac-alt)
 - lefthook + gitleaks: 高速並列の pre-commit フック + シークレットスキャン
 - claude-code / codex / opencode: シェル上のエージェント CLI
-- `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go)、gum スピナー付き
+- `bump`: 全部まとめて更新する CLI (nix-darwin + brew + rustup/mise/npm/krew/gh/cargo/go/uv)、gum スピナー付き
 - jj (Jujutsu): git 互換のモダン VCS、repo ごとに git と colocate
 - Karabiner-Elements: Caps Lock → Hyper Key + hjkl 矢印キー
 
@@ -405,9 +405,7 @@ cd <repo> && jj git init --colocate
 単体ではなく `nix flake update` + `darwin-rebuild switch`。nix が管理しないユーザー
 領域のマネージャもこれに合わせて更新する。
 
-ステップは 2 フェーズ。順序と root が要るものが先に直列で走り
-(`flake` → `darwin` → `brew` → `brew-cask`)、それ以降は互いに独立なので並列に走って
-終わったものから順に結果が出る。出力は画面ではなく
+ステップは 2 フェーズ。順序と root が要るものが先に直列で走り (`flake` → `darwin` → `brew` → `brew-cask` → `rustup` → `mise`。後ろ 2 つは cargo / npm が使うツールチェーンを入れ替えるので先に終わらせる)、それ以降は互いに独立なので並列に走って終わったものから順に結果が出る。出力は画面ではなく
 `~/.cache/bump/<timestamp>-<pid>/<step>.log` に入り、失敗したステップだけログ末尾が
 その場に表示される。直近 20 回分を保持。
 
@@ -417,9 +415,9 @@ cd <repo> && jj git init --colocate
 
 | Cmd | 動作 |
 | --- | --- |
-| `bump` | 全部更新: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go |
+| `bump` | 全部更新: flake → nix-darwin → brew → casks → rustup/mise/npm-g/krew/gh/atuin/cargo/go/uv |
 | `bump -n` | 実行計画と skip 理由だけ表示、何も実行しない |
-| `bump --only nix,brew` | 指定ステップだけ実行 |
+| `bump --only flake,brew` | 指定ステップだけ実行 |
 | `bump --skip atuin` | 指定ステップ以外を実行 |
 | `bump -l` | ステップ名一覧 |
 | `bump -V` | バージョンと由来リビジョンを表示 |
@@ -432,6 +430,10 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 
 `cargo`/`go` バイナリは `cargo` / `gup` ステップが面倒を見る。
 [`cargo-update`][cargo-update] / [`gup`][gup] が入っていなければ自分で skip する。
+
+cask は `--greedy-auto-updates` 付きで上げる。素の `brew upgrade --cask` は「自分で更新する」と宣言した cask を全部飛ばすが、ここでは自己更新しないものが複数あった。`mise` は dotfiles のチェックアウトに対して走らせる (`mise -C`)。`mise upgrade` は起動したディレクトリの設定しか見ず、`bump` はたいてい `$HOME` から叩かれるため。`npm` は `$HOME` のシェルが使う npm (グローバルな mise の node があればそれ、なければ Homebrew の) を対象にし、カレントディレクトリが有効にする node には引きずられない。`uv` は `uv tool upgrade --all`。
+
+サマリの後に、Homebrew のコピーより `PATH` の前にいる同名バイナリ (古い `~/.local/bin/jq`、Rancher Desktop の kubectl など) を列挙する。全ステップ green のまま、どのステップも更新しないコピーをシェルが使い続けることがあり、それが見えるのはここだけ。
 
 [cargo-update]: https://github.com/nabijaczleweli/cargo-update
 [gup]: https://github.com/nao1215/gup

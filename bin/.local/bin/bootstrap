@@ -26,10 +26,17 @@ warn() { printf '\e[33m!\e[0m %s\n' "$*" >&2; }
 
 # ---- mise runtimes -------------------------------------------------------
 # Installs whatever the nearest mise config pins (repo mise.toml pins node).
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+
 do_mise() {
     have mise || { skip "mise not installed — skipping runtimes"; return; }
     info "mise: installing pinned runtimes"
-    if mise install; then
+    # -C: `mise install` only reads the configs of the directory it starts in
+    # (plus the global one), so run from $HOME it installed nothing from the
+    # dotfiles mise.toml. Same fix as bump's mise step.
+    local dir=$HOME
+    [[ -d "$DOTFILES_DIR" ]] && dir=$DOTFILES_DIR
+    if mise -C "$dir" install; then
         ok "mise runtimes ready"
     else
         warn "mise: failed to install pinned runtimes"
