@@ -406,7 +406,7 @@ everything in one run. This box is nix-darwin declarative, so the system path is
 `nix flake update` + `darwin-rebuild switch` — not a bare `brew upgrade`; the
 per-user managers nix doesn't own are bumped alongside it.
 
-Steps run in two phases. The ordered, root-hungry ones go first and serially (`flake` → `darwin` → `brew` → `brew-cask` → `rustup` → `mise`; the last two replace the toolchains cargo and npm run on, so they must finish first); everything after that is independent, so it runs concurrently and each result prints the moment that tool finishes. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rather
+Steps run in two phases. The ordered, root-hungry ones go first and serially (`flake` → `darwin` → `brew` → `brew-cask`); everything after that runs concurrently and each result prints the moment that tool finishes. The only waits are `cargo` on `rustup`, and `npm` / `gup` / `uv` on `mise`, whose toolchains they can run on. Whatever directory `bump` is started in, the steps run as if from `$HOME`: mise and direnv undo what they loaded for the caller's directory (tool dirs on `PATH`, and exported env such as `RUSTUP_TOOLCHAIN`). A nix shell cannot be undone that way, so `bump` warns when started inside one. Output goes to `~/.cache/bump/<timestamp>-<pid>/<step>.log` rather
 than the screen — a failing step gets its log tail printed inline, and the last
 20 runs are kept.
 
@@ -433,7 +433,7 @@ need root (`darwin`, `brew-cask`) are skipped cleanly and the rest still run.
 `cargo`/`go` binaries are covered by the `cargo` and `gup` steps, which skip
 themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
 
-Casks are upgraded with `--greedy-auto-updates`: a plain `brew upgrade --cask` skips every cask that claims to update itself, and several here never did. `mise` runs against the dotfiles checkout (`mise -C`), because `mise upgrade` only sees the configs of the directory it starts in and `bump` is usually run from `$HOME`. `npm` targets the npm a shell in `$HOME` would use (a global mise node if one is pinned, else Homebrew's), not whichever node the current directory activates. `uv` runs `uv tool upgrade --all`.
+Casks that claim to update themselves (`auto_updates true`) are skipped by a plain `brew upgrade --cask`, and several here never did, so `brew-cask` checks each one: an app that already reports the new version is left alone, one that is behind is upgraded, and one that is behind but running, where the upgrade would quit it (Ghostty, Ollama), is reported at the end instead of being closed. `mise` also upgrades the dotfiles checkout's `mise.toml` (`mise -C`), because `mise upgrade` only sees the configs of the directory it starts in. `uv` runs `uv tool upgrade --all`.
 
 After the summary, `bump` names any binary earlier on `PATH` than Homebrew's copy of the same tool (a stale `~/.local/bin/jq`, Rancher Desktop's kubectl). Every step can be green while the shell keeps running a copy no step updates, so this is the only place that shows up.
 

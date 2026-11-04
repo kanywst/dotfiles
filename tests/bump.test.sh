@@ -93,10 +93,15 @@ for _t in timeout gtimeout; do
     _p=$(command -v "$_t" 2>/dev/null) && { ln -sf "$_p" "$STUB/timeout"; HAVE_TIMEOUT=true; break; }
 done
 
+PY3=$(command -v python3 2>/dev/null || :)
+
 # Defaults: every manager present and succeeding. Individual tests override.
 reset_stubs() {
     rm -f "$STUB"/*
     $HAVE_TIMEOUT && ln -sf "$(command -v timeout || command -v gtimeout)" "$STUB/timeout"
+    # The cask planner is python. /usr/bin/python3 on macOS is an xcrun shim that
+    # needs TMPDIR, which `env -i` drops, so hand the stub PATH the real one.
+    [[ -n "$PY3" ]] && ln -sf "$PY3" "$STUB/python3"
     local t
     for t in nix rustup mise kubectl gh cargo cargo-install-update gup uv darwin-rebuild brew npm atuin; do
         stub "$t" 'exit 0'
@@ -516,35 +521,69 @@ run -- --only npm
 assert_eq "a broken npm fails the step instead of reporting success" "$RC" "1"
 assert_contains "a broken npm's stderr reaches the reader" "$OUT" "npm is broken"
 
-# The npm step must not follow the caller's cwd: mise puts a per-directory node
-# first on PATH, so `bump` from inside a mise project upgraded that node's empty
-# global prefix and reported success. With no global mise node it uses brew's.
+# The steps must not follow the caller's cwd. mise puts a per-directory node
+# straight onto PATH, so `bump` from inside a mise project upgraded that node's
+# empty global prefix and reported success. bump drops mise's install dirs and
+# puts its shims first, which resolve as $HOME does.
 reset_stubs
 rm -rf "$TMP/cache/bump"
-mkdir -p "$TMP/brewpfx/bin"
-# shellcheck disable=SC2016  # the fake npm's own $1/$*.
-printf '%s\n' '#!/bin/sh' 'case "$1" in outdated) echo "/p/node_modules/foo:foo@2.0.0:foo@1.0.0:foo@2.0.0"; exit 1;; esac' 'echo "BREWNPM $*"' >"$TMP/brewpfx/bin/npm"; chmod +x "$TMP/brewpfx/bin/npm"
-# shellcheck disable=SC2016  # the stub's own $1.
-stub brew 'case "$1" in --prefix) echo "'"$TMP/brewpfx"'";; trust) exit 1;; esac; exit 0'
-stub mise 'exit 1'   # `mise which npm`: no node pinned for $HOME
-stub npm 'echo "PATHNPM $*"'
-run -- --only npm
+mkdir -p "$TMP/data/mise/installs/node/9/bin"
+# shellcheck disable=SC2016  # the fake npm's own $*.
+printf '%s\n' '#!/bin/sh' 'echo "PROJECTNPM $*"' >"$TMP/data/mise/installs/node/9/bin/npm"
+chmod +x "$TMP/data/mise/installs/node/9/bin/npm"
+# shellcheck disable=SC2016
+stub npm 'case "$1" in outdated) echo "/p/node_modules/foo:foo@2.0.0:foo@1.0.0:foo@2.0.0"; exit 1;; esac; echo "HOMENPM $*"'
+run PATH="$TMP/data/mise/installs/node/9/bin:$STUB:$SYSBIN" -- --only npm
 NPMLOG=$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)
-assert_contains "npm uses Homebrew's npm when mise pins no global node" "$NPMLOG" "BREWNPM install -g foo@latest"
-assert_missing "npm ignores the cwd's npm when brew has one" "$NPMLOG" "PATHNPM"
+assert_contains "npm uses the npm \$HOME resolves" "$NPMLOG" "HOMENPM install -g foo@latest"
+assert_missing "npm ignores the caller's per-directory mise node" "$NPMLOG" "PROJECTNPM"
 
 reset_stubs
 rm -rf "$TMP/cache/bump"
-mkdir -p "$TMP/misenode/bin"
-# shellcheck disable=SC2016  # the fake npm's own $1/$*.
-printf '%s\n' '#!/bin/sh' 'case "$1" in outdated) echo "/p/node_modules/foo:foo@2.0.0:foo@1.0.0:foo@2.0.0"; exit 1;; esac' 'echo "MISENPM $*"' >"$TMP/misenode/bin/npm"; chmod +x "$TMP/misenode/bin/npm"
+mkdir -p "$TMP/data/mise/shims"
 # shellcheck disable=SC2016
-stub mise 'if [ "$3" = which ]; then echo "'"$TMP/misenode/bin/npm"'"; exit 0; fi; exit 0'
+printf '%s\n' '#!/bin/sh' 'echo "SHIMNPM $*" >&2' >"$TMP/data/mise/shims/npm"; chmod +x "$TMP/data/mise/shims/npm"
+run PATH="$STUB:$SYSBIN:$TMP/data/mise/shims" -- --only npm
+assert_contains "mise's shims go first, so a global mise node wins" \
+    "$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)" "SHIMNPM outdated"
+rm -rf "$TMP/data/mise"
+
+# cargo honours a rust-toolchain.toml in the cwd, so the steps run from $HOME.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016  # $PWD is the stub's.
+stub uv 'echo "CWD=$PWD"'
+run -- --only uv
+assert_contains "steps run from \$HOME, not from where bump started" \
+    "$(cat "$TMP"/cache/bump/*/uv.log 2>/dev/null)" "CWD=$(cd "$TMP" && pwd)"
+
+# The caller's mise exported its project env too (RUSTUP_TOOLCHAIN from a
+# pinned rust, GOROOT, a project [env]). bump has mise undo it from $HOME.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016  # the stub's own $1.
+stub mise 'case "$1" in hook-env) echo "unset RUSTUP_TOOLCHAIN";; esac; exit 0'
 # shellcheck disable=SC2016
-stub brew 'case "$1" in --prefix) echo "'"$TMP/brewpfx"'";; trust) exit 1;; esac; exit 0'
-run -- --only npm
-NPMLOG=$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)
-assert_contains "npm prefers the node a global mise config pins" "$NPMLOG" "MISENPM install -g foo@latest"
+stub rustup 'echo "TC=${RUSTUP_TOOLCHAIN:-unset}"'
+run RUSTUP_TOOLCHAIN=1.70 __MISE_DIFF=x -- --only rustup
+assert_contains "the caller's mise env is undone before the steps run" \
+    "$(cat "$TMP"/cache/bump/*/rustup.log 2>/dev/null)" "TC=unset"
+
+reset_stubs
+run IN_NIX_SHELL=impure -- --only uv
+assert_contains "running inside a nix shell is called out" "$OUT" "running inside a nix shell"
+
+# A mise shim exists for any tool some project once installed. In $HOME it only
+# counts when it resolves: else the step must skip, not fail every run.
+reset_stubs
+mkdir -p "$TMP/data/mise/shims"
+printf '%s\n' '#!/bin/sh' 'echo "No version is set for shim: npm" >&2; exit 1' >"$TMP/data/mise/shims/npm"
+chmod +x "$TMP/data/mise/shims/npm"
+rm -f "$STUB/npm"
+stub mise 'exit 1'
+run PATH="$STUB:$SYSBIN:$TMP/data/mise/shims" -- --only npm
+assert_contains "an unresolvable mise shim is not 'installed'" "$OUT" "npm not installed"
+rm -rf "$TMP/data/mise"
 
 # --- mise -------------------------------------------------------------------
 # `mise upgrade` only sees the configs of the directory it starts in, and bump
@@ -554,19 +593,84 @@ reset_stubs
 rm -rf "$TMP/cache/bump"
 stub mise 'echo "MISE $*"'
 run -- --only mise
-assert_contains "mise upgrades against the dotfiles checkout, not the cwd" \
+assert_contains "mise also upgrades the dotfiles checkout's config" \
     "$(cat "$TMP"/cache/bump/*/mise.log 2>/dev/null)" "MISE -C $TMP/dotfiles upgrade"
+run DOTFILES_DIR="$TMP/nowhere" -- --only mise
+assert_contains "a missing checkout is said out loud, not hidden behind a green tick" \
+    "$OUT" "only the global mise config was upgraded"
 
 # --- casks ------------------------------------------------------------------
 # A bare `brew upgrade --cask` skips every auto_updates cask, and several never
-# updated themselves (copilot-cli was 81 releases behind).
-reset_stubs
-rm -rf "$TMP/cache/bump"
-# shellcheck disable=SC2016
-stub brew 'case "$1" in trust) exit 1;; esac; echo "BREW $*"'
+# updated themselves (copilot-cli was 81 releases behind). Each is judged: an
+# app that already self-updated is left alone, and one that is running is not
+# quit by the upgrade (Ghostty would close every window), it is reported.
+mkdir -p "$TMP/apps/Selfup.app/Contents" "$TMP/apps/Ahead.app/Contents" "$TMP/apps/Renamed.app/Contents" \
+    "$TMP/apps/Behind.app/Contents" "$TMP/apps/Busy.app/Contents/MacOS"
+plist() { printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>%s</string></dict></plist>\n' "$1" >"$2/Contents/Info.plist"; }
+plist 2.0 "$TMP/apps/Selfup.app"; plist 2.1.0 "$TMP/apps/Ahead.app"; plist 2.0.0 "$TMP/apps/Renamed.app"
+plist 1.0 "$TMP/apps/Behind.app"; plist 1.0 "$TMP/apps/Busy.app"
+# ahead: the app updated itself PAST the cask (reinstalling would downgrade it).
+# renamed: the app stanza installs Src.app under another name.
+# busy: closed by `signal`, not `quit`, which kills a running app just the same.
+OUTDATED='{"casks":[{"name":"cli","current_version":"3.0"},{"name":"selfup","current_version":"2.0"},{"name":"ahead","current_version":"2.0"},{"name":"renamed","current_version":"2.0"},{"name":"behind","current_version":"2.0"},{"name":"busy","current_version":"2.0,abc"}]}'
+INFO='{"casks":[{"token":"cli","artifacts":[{"binary":["cli"]}]},{"token":"selfup","artifacts":[{"app":["Selfup.app"]},{"uninstall":[{"quit":"x.selfup"}]}]},{"token":"ahead","artifacts":[{"app":["Ahead.app"]},{"uninstall":[{"quit":"x.ahead"}]}]},{"token":"renamed","artifacts":[{"app":["Src.app",{"target":"Renamed.app"}]},{"uninstall":[{"quit":"x.renamed"}]}]},{"token":"behind","artifacts":[{"app":["Behind.app"]},{"uninstall":[{"quit":"x.behind"}]}]},{"token":"busy","artifacts":[{"app":["Busy.app"]},{"uninstall":[{"signal":[["TERM","x.busy"]]}]}]}]}'
+cask_stub() {
+    stub brew "case \"\$1 \$2\" in
+        'trust --json') exit 1 ;;
+        'outdated --cask') echo '$OUTDATED' ;;
+        'info --cask') echo '$INFO' ;;
+        *) echo \"BREW \$*\" ;;
+    esac"
+}
+reset_stubs; rm -rf "$TMP/cache/bump"; cask_stub
+_busy_pid=
+if ps -axo comm= >/dev/null 2>&1; then
+    # A symlink, not a copy: macOS kills a copied system binary on exec
+    # (Killed: 9), while ps reports a symlinked launch under the link's path.
+    ln -sf /bin/sleep "$TMP/apps/Busy.app/Contents/MacOS/Busy"
+    "$TMP/apps/Busy.app/Contents/MacOS/Busy" 30 & _busy_pid=$!
+    sleep 0.3   # let it exec before bump lists processes
+fi
+run HOMEBREW_CASK_OPTS="--appdir=$TMP/apps" -- --only brew-cask
+[[ -n "$_busy_pid" ]] && { kill "$_busy_pid" 2>/dev/null; wait "$_busy_pid" 2>/dev/null; }
+CASKLOG=$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)
+assert_eq "the cask step succeeds" "$RC" "0"
+assert_matches "regular casks are still upgraded first" "$CASKLOG" '^BREW upgrade --cask$'
+assert_matches "an auto_updates cask with no app to quit is upgraded" "$CASKLOG" "^BREW upgrade --cask cli"
+assert_contains "an app that already updated itself is left alone" "$CASKLOG" "selfup: the app already updated itself"
+assert_contains "an app that updated past the cask is not downgraded" "$CASKLOG" "ahead: the app already updated itself (2.1.0)"
+assert_contains "an app installed under a target name is found by that name" "$CASKLOG" "renamed: the app already updated itself (2.0.0)"
+if [[ -n "$_busy_pid" ]]; then
+    assert_matches "an app that is behind and closed is upgraded" "$CASKLOG" "^BREW upgrade --cask cli behind$"
+    assert_missing "a running app the upgrade would quit is not upgraded" "$CASKLOG" "behind busy"
+    assert_contains "a running app that was held back is reported at the end" "$OUT" "busy is behind (1.0 -> 2.0) but running"
+else
+    # No process list (a sandbox): a cask whose upgrade quits its app is held
+    # back rather than upgraded on the guess that nothing is open.
+    assert_missing "with no process list, an app the upgrade would quit is held back" "$CASKLOG" "behind busy"
+    assert_contains "with no process list, the held-back app is reported" "$OUT" "busy is behind (1.0 -> 2.0), but whether it is running could not be checked"
+fi
+
+# One broken regular cask must not hold every auto_updates cask back with it.
+reset_stubs; rm -rf "$TMP/cache/bump"
+stub brew "case \"\$1 \$2\" in
+    'trust --json') exit 1 ;;
+    'outdated --cask') echo '{\"casks\":[{\"name\":\"cli\",\"current_version\":\"3.0\"}]}' ;;
+    'info --cask') echo '{\"casks\":[{\"token\":\"cli\",\"artifacts\":[]}]}' ;;
+    *) echo \"BREW \$*\"; [ \"\$#\" -eq 2 ] && exit 1; exit 0 ;;
+esac"
 run -- --only brew-cask
-assert_contains "the cask step includes auto_updates casks" \
-    "$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)" "BREW upgrade --cask --greedy-auto-updates"
+assert_contains "a failing regular cask upgrade still lets auto_updates casks go" \
+    "$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)" "BREW upgrade --cask cli"
+assert_eq "a failing regular cask upgrade still fails the step" "$RC" "1"
+
+# Unable to judge (no python3 / broken JSON): upgrade none of them, and say so.
+reset_stubs; rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in trust) exit 1;; outdated) echo "not json";; *) echo "BREW $*";; esac'
+run -- --only brew-cask
+assert_eq "an unreadable outdated list does not fail the step" "$RC" "0"
+assert_contains "an unreadable outdated list is reported" "$OUT" "could not inspect auto_updates casks"
 
 # --- uv ---------------------------------------------------------------------
 reset_stubs
@@ -598,8 +702,17 @@ run PATH="$TMP/shadow:$STUB:$TMP/shadowpfx/bin:$SYSBIN" -- --only mise
 assert_contains "a binary shadowing brew's copy is named" "$OUT" "shadow/jq"
 assert_missing "a symlink to brew's own copy is not a shadow" "$OUT" "shadow/same"
 assert_missing "a self-updating copy on the allow list is not reported" "$OUT" "shadow/rustup"
+run PATH="$TMP/shadow:$STUB:$TMP/shadowpfx/bin/:$SYSBIN" -- --only mise
+assert_contains "brew's bin written with a trailing slash is still found" "$OUT" "shadow/jq"
 run PATH="$STUB:$TMP/shadowpfx/bin:$TMP/shadow:$SYSBIN" -- --only mise
 assert_missing "a copy after brew on PATH is not a shadow" "$OUT" "shadows"
+# With brew's bin not on PATH at all, the scan used to walk everything and
+# report /usr/bin as shadowing brew. Nothing can shadow what is not on PATH.
+cp "$SYSBIN/date" "$TMP/shadowpfx/bin/date" 2>/dev/null || :
+run PATH="$TMP/shadow:$STUB:$SYSBIN" -- --only mise
+assert_missing "brew's bin missing from PATH reports nothing" "$OUT" "shadows"
+run HOMEBREW_PREFIX="$TMP/shadowpfx" PATH="$TMP/shadow:$STUB:$TMP/shadowpfx/bin:$SYSBIN" -- --only mise
+assert_contains "HOMEBREW_PREFIX is used without asking brew" "$OUT" "shadow/jq"
 
 # --- cargo -----------------------------------------------------------------
 # The prebuilt cargo-binstall carries a bundled resolver that dies on a router
@@ -648,15 +761,34 @@ run -- --skip flake,darwin,brew,brew-cask
 assert_eq "the parallel phase exits 0 when every step passes" "$RC" "0"
 assert_contains "the parallel phase announces itself" "$OUT" "in parallel:"
 # Results arrive out of order, so each needs its own step tag to be identifiable.
-# 9 = rustup and mise (serial) + the 7 parallel steps.
-assert_eq "every step reports exactly one result" \
+assert_eq "every parallel step reports exactly one result" \
     "$(printf '%s' "$OUT" | grep -cE '^  (✓|✗) \[[0-9]+/9\]')" "9"
-# rustup swaps the toolchain cargo builds with, and mise the node npm runs on,
-# so neither may share the parallel phase with the steps that consume them.
 PARLINE=$(printf '%s\n' "$OUT" | grep 'in parallel:')
-assert_missing "rustup is not in the parallel phase" "$PARLINE" "rustup"
-assert_missing "mise is not in the parallel phase" "$PARLINE" "mise"
+assert_contains "rustup runs in the parallel phase" "$PARLINE" "rustup"
 assert_contains "uv tools run in the parallel phase" "$PARLINE" "uv tools"
+
+# cargo builds with the toolchain rustup replaces, and npm runs on the node mise
+# replaces, so each waits for its pair. Nothing else waits.
+reset_stubs
+rm -rf "$TMP/cache/bump"
+stub rustup "sleep 3; touch \"$TMP/rustup-done\""   # 3s: room for gh to start first even on a slow machine
+stub mise "sleep 1; touch \"$TMP/mise-done\""
+stub cargo "[ -e \"$TMP/rustup-done\" ] && echo AFTER-RUSTUP || echo BEFORE-RUSTUP"
+stub npm "{ [ -e \"$TMP/mise-done\" ] && echo AFTER-MISE || echo BEFORE-MISE; } >&2"
+stub gh "[ -e \"$TMP/rustup-done\" ] && echo GH-WAITED || echo GH-FREE"
+stub uv "[ -e \"$TMP/mise-done\" ] && echo AFTER-MISE || echo BEFORE-MISE"
+rm -f "$TMP/rustup-done" "$TMP/mise-done"
+run -- --only rustup,cargo,mise,npm,gh,uv
+assert_contains "cargo starts after rustup finishes" "$(cat "$TMP"/cache/bump/*/cargo.log 2>/dev/null)" "AFTER-RUSTUP"
+assert_contains "npm starts after mise finishes" "$(cat "$TMP"/cache/bump/*/npm.log 2>/dev/null)" "AFTER-MISE"
+assert_contains "uv (a mise python can carry its venvs) waits for mise" "$(cat "$TMP"/cache/bump/*/uv.log 2>/dev/null)" "AFTER-MISE"
+assert_contains "an unrelated step does not wait" "$(cat "$TMP"/cache/bump/*/gh.log 2>/dev/null)" "GH-FREE"
+rm -f "$TMP/rustup-done" "$TMP/mise-done"
+# A dependency that is not running this time must not be waited for.
+reset_stubs
+_t0=$SECONDS
+run -- --only cargo
+assert_eq "cargo alone does not wait for an unselected rustup" "$(( SECONDS - _t0 < 5 ))" "1"
 
 # --- logs ------------------------------------------------------------------
 reset_stubs

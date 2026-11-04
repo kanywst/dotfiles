@@ -406,7 +406,7 @@ cd <repo> && jj git init --colocate
 単体ではなく `nix flake update` + `darwin-rebuild switch`。nix が管理しないユーザー
 領域のマネージャもこれに合わせて更新する。
 
-ステップは 2 フェーズ。順序と root が要るものが先に直列で走り (`flake` → `darwin` → `brew` → `brew-cask` → `rustup` → `mise`。後ろ 2 つは cargo / npm が使うツールチェーンを入れ替えるので先に終わらせる)、それ以降は互いに独立なので並列に走って終わったものから順に結果が出る。出力は画面ではなく
+ステップは 2 フェーズ。順序と root が要るものが先に直列で走り (`flake` → `darwin` → `brew` → `brew-cask`)、それ以降は並列に走って終わったものから順に結果が出る。待ち合わせるのは、使うツールチェーンを入れ替えられる組だけ: `cargo` は `rustup` を、`npm` / `gup` / `uv` は `mise` を待つ。`bump` をどのディレクトリから起動しても、各ステップは `$HOME` から起動したのと同じ状態で走る。起動元ディレクトリ用に mise と direnv が読み込んだもの (`PATH` 上のツールや `RUSTUP_TOOLCHAIN` などの環境変数) は、それぞれに戻させる。nix shell はこの方法では戻せないので、その中で起動すると警告を出す。出力は画面ではなく
 `~/.cache/bump/<timestamp>-<pid>/<step>.log` に入り、失敗したステップだけログ末尾が
 その場に表示される。直近 20 回分を保持。
 
@@ -432,7 +432,7 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 `cargo`/`go` バイナリは `cargo` / `gup` ステップが面倒を見る。
 [`cargo-update`][cargo-update] / [`gup`][gup] が入っていなければ自分で skip する。
 
-cask は `--greedy-auto-updates` 付きで上げる。素の `brew upgrade --cask` は「自分で更新する」と宣言した cask を全部飛ばすが、ここでは自己更新しないものが複数あった。`mise` は dotfiles のチェックアウトに対して走らせる (`mise -C`)。`mise upgrade` は起動したディレクトリの設定しか見ず、`bump` はたいてい `$HOME` から叩かれるため。`npm` は `$HOME` のシェルが使う npm (グローバルな mise の node があればそれ、なければ Homebrew の) を対象にし、カレントディレクトリが有効にする node には引きずられない。`uv` は `uv tool upgrade --all`。
+素の `brew upgrade --cask` は「自分で更新する」と宣言した cask (`auto_updates true`) を全部飛ばすが、ここでは自己更新しないものが複数あった。そこで `brew-cask` は 1 つずつ判定する。アプリがもう新しい版なら触らない、古ければ上げる、古いが起動中で上げると終了させてしまうもの (Ghostty、Ollama) は閉じずに最後に報告する。`mise` は dotfiles の `mise.toml` も上げる (`mise -C`)。`mise upgrade` は起動したディレクトリの設定しか見ないため。`uv` は `uv tool upgrade --all`。
 
 サマリの後に、Homebrew のコピーより `PATH` の前にいる同名バイナリ (古い `~/.local/bin/jq`、Rancher Desktop の kubectl など) を列挙する。全ステップ green のまま、どのステップも更新しないコピーをシェルが使い続けることがあり、それが見えるのはここだけ。
 

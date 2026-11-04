@@ -25,7 +25,7 @@ skip() { printf '\e[90m·\e[0m %s\n' "$*"; }
 warn() { printf '\e[33m!\e[0m %s\n' "$*" >&2; }
 
 # ---- mise runtimes -------------------------------------------------------
-# Installs whatever the nearest mise config pins (repo mise.toml pins node).
+# Installs what the global mise config and the dotfiles mise.toml pin (node).
 DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 
 do_mise() {

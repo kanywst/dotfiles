@@ -17,9 +17,11 @@
 # npm` never prompts.
 #
 # Steps run in two phases. The serial phase (nix flake → nix-darwin → brew →
-# brew casks → rustup → mise) is ordered, root-hungry, or replaces a toolchain
-# a later step runs on. Everything after it is independent, so
-# it runs concurrently and each result prints the moment that tool finishes.
+# brew casks) is ordered and root-hungry. Everything after it runs
+# concurrently, and each result prints the moment that tool finishes; the only
+# waits are cargo on rustup, and npm / gup / uv on mise, whose toolchains they
+# can run on. Whatever directory bump is started in, the steps run as if from
+# $HOME: mise and direnv undo what they loaded for the caller's directory.
 #
 # UI: when `gum` is present each serial step gets a spinner. Every step's output
 # is captured to a per-run log directory instead of the screen; a failing step
@@ -58,6 +60,12 @@ set -uo pipefail   # NOT -e: one failing manager must not abort the rest.
 BUMP_VERSION=1.0.0
 
 export DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+# Both made absolute up front: main moves to $HOME before any step runs, and a
+# relative DOTFILES_DIR (or a relative $0 from `bin/.local/bin/bump`) would
+# then point somewhere else.
+[[ "$DOTFILES_DIR" == /* ]] || DOTFILES_DIR="$PWD/$DOTFILES_DIR"
+BUMP_SELF=$0
+[[ "$BUMP_SELF" == /* ]] || BUMP_SELF="$PWD/$BUMP_SELF"
 
 # Generous on purpose: a real nixpkgs-unstable rebuild can legitimately run for
 # many minutes, so this must only fire on a genuine hang, never on slow work.
@@ -79,7 +87,22 @@ D=$'\e[38;5;244m'   # dim grey
 C=$'\e[38;5;117m'   # cyan
 B=$'\e[1m'; X=$'\e[0m'
 
-have() { command -v "$1" >/dev/null 2>&1; }
+# A mise shim exists for every tool any project ever installed, so finding one
+# on PATH is not "installed": in $HOME it either resolves (a global pin, or a
+# real binary further down PATH) or errors "No version is set". Only the first
+# counts. MISE_DATA is set before the steps' PATH puts the shims first.
+MISE_DATA="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+have() {
+    local p
+    p=$(command -v "$1" 2>/dev/null) || return 1
+    [[ "$p" == "$MISE_DATA/shims/"* ]] || return 0
+    command -v mise >/dev/null 2>&1 && mise which "$1" >/dev/null 2>&1 && return 0
+    # Pattern in a variable: bash 3.2 mangles a quoted pattern inside ${//}.
+    local np=":$PATH:" pat=":$MISE_DATA/shims:"
+    np=${np//$pat/:}
+    np=${np#:}; np=${np%:}
+    PATH="$np" command -v "$1" >/dev/null 2>&1
+}
 HAS_GUM=false; have gum && HAS_GUM=true
 
 # Homebrew's coreutils links a GNU tool unprefixed when macOS has no command of
@@ -89,9 +112,10 @@ TIMEOUT_BIN=
 for c in timeout gtimeout; do have "$c" && { TIMEOUT_BIN=$c; break; }; done
 
 # ---- the step table ------------------------------------------------------
-# name|emoji|label|spinner|phase|sudo
+# name|emoji|label|spinner|phase|sudo|after
 #   phase  serial = order matters and/or it needs root; par = independent.
 #   sudo   yes    = skipped outright when the up-front `sudo -v` didn't take.
+#   after  (par only) another par step this one waits for, when both run.
 # The list is the single source of truth: step count, --only/--skip names and
 # run order all derive from it, so adding a tool here is the whole change.
 STEPS=(
@@ -99,20 +123,22 @@ STEPS=(
     "darwin|🍎|nix-darwin switch|globe|serial|yes"
     "brew|🍺|homebrew formulae|meter|serial|no"
     "brew-cask|🍻|homebrew casks|meter|serial|yes"
-    # rustup and mise are serial on purpose: they replace the toolchains the
-    # parallel steps run on. In parallel, `rustup update` swapped the stable
-    # toolchain out from under the `cargo install` that rebuilds cargo-binstall
-    # from source (3+ minutes, see do_cargo), and `mise upgrade` can move the
-    # node an npm step is mid-install with.
-    "rustup|🦀|rustup|monkey|serial|no"
-    "mise|🧰|mise|minidot|serial|no"
-    "npm|📦|npm globals|line|par|no"
+    # cargo waits for rustup; npm, gup and uv wait for mise. Those two replace
+    # the toolchains the others can run on. Fully parallel, `rustup update`
+    # could swap stable out from under the `cargo install` that rebuilds
+    # cargo-binstall from source (3+ minutes, see do_cargo), and `mise upgrade`
+    # could install-and-remove the node / go / python that an npm install, a
+    # `go install` or a uv venv is running on (through mise's shims, first on
+    # PATH). krew, gh and atuin need neither and start at once.
+    "rustup|🦀|rustup|monkey|par|no"
+    "mise|🧰|mise|minidot|par|no"
+    "npm|📦|npm globals|line|par|no|mise"
     "krew|☸️|krew|points|par|no"
     "gh|🐙|gh extensions|pulse|par|no"
     "atuin|🐢|atuin sync|moon|par|no"
-    "cargo|🦞|cargo bins|dot|par|no"
-    "gup|🐹|go bins|dot|par|no"
-    "uv|🐍|uv tools|dot|par|no"
+    "cargo|🦞|cargo bins|dot|par|no|rustup"
+    "gup|🐹|go bins|dot|par|no|mise"
+    "uv|🐍|uv tools|dot|par|no|mise"
 )
 
 # ---- step bodies ---------------------------------------------------------
@@ -277,55 +303,148 @@ do_brew_cask() {
     # independent by design (a failed formula step does not stop this one), so
     # each has to be able to explain its own failure.
     brew_trust_probe || return 1
-    # --greedy-auto-updates: a bare `brew upgrade --cask` skips every cask that
-    # declares `auto_updates true`, on the theory that the app updates itself.
-    # Several here never did: copilot-cli sat at 1.0.24 against 1.0.105 and
-    # Karabiner-Elements at 16.0.0 against 16.3.0 (checked 2026-11-04), with
-    # every run reporting the cask step green. An app that did self-update just
-    # gets reinstalled at the same version, which costs a download, not a break.
-    # Not --greedy: that also pulls in `version :latest` casks, which have no
-    # version to compare and so reinstall on every single run.
-    brew upgrade --cask --greedy-auto-updates
+    # Not `|| return`: one broken regular cask (a 404, a pkg that needs a
+    # password) must not keep every auto_updates cask behind with it.
+    local rc=0
+    brew upgrade --cask || rc=$?
+    # A bare `brew upgrade --cask` skips every cask that declares `auto_updates
+    # true`, on the theory that the app updates itself. Several here never did:
+    # copilot-cli sat at 1.0.24 against 1.0.105 and Karabiner-Elements at 16.0.0
+    # against 16.3.0 (checked 2026-11-04), with every run reporting green.
+    #
+    # Not a blanket --greedy-auto-updates, though: upgrading a cask runs its
+    # uninstall stanza, and for Ghostty and Ollama that is `quit`. Homebrew only
+    # spares an app that is an ancestor of the brew process, so a run from a
+    # herdr/tmux pane or another terminal would close every Ghostty window. So
+    # each one is judged first (cask_greedy_plan): an app that already updated
+    # itself is left alone, a running app that brew would quit is reported
+    # instead of killed, and the rest are named explicitly, which Homebrew
+    # upgrades as if greedy.
+    local plan action token detail
+    local -a up=()
+    if ! plan=$(cask_greedy_plan); then
+        note "brew-cask: could not inspect auto_updates casks, so only the regular ones were upgraded"
+        return $rc
+    fi
+    while IFS=$'\t' read -r action token detail; do
+        case "$action" in
+            upgrade) up+=("$token") ;;
+            current) echo "$token: the app already updated itself ($detail); leaving it" ;;
+            running) note "brew-cask: $token is behind ($detail) but running, and upgrading would quit it. Quit it, then: bump --only brew-cask" ;;
+            unknown) note "brew-cask: $token is behind ($detail), but whether it is running could not be checked and upgrading would quit it, so it was held back" ;;
+        esac
+    done <<<"$plan"
+    ((${#up[@]})) || return $rc
+    echo "auto_updates casks that never updated themselves: ${up[*]}"
+    brew upgrade --cask "${up[@]}" || rc=$?
+    return $rc
 }
+
+# One line per outdated auto_updates cask: <action>\t<token>\t<detail>, where
+# action is upgrade, current (its app already reports the cask's version or a
+# newer one), running (behind, its uninstall quits or signals it, and it is open
+# right now) or unknown (as running, but no process list could be read). Exits
+# non-zero when it cannot tell at all, and the caller then upgrades none.
+#
+# `launchctl` in an uninstall stanza is deliberately not "disruptive": it is how
+# a pkg cask like Karabiner swaps its agents, which the new install restarts,
+# and counting it would hold Karabiner back forever since it is always running.
+cask_greedy_plan() {
+    local outdated info procs tokens
+    command -v python3 >/dev/null 2>&1 || return 1
+    outdated=$(brew outdated --cask --greedy-auto-updates --json=v2 2>/dev/null) || return 1
+    tokens=$(printf '%s' "$outdated" | python3 -c 'import json,sys
+for c in json.load(sys.stdin).get("casks", []): print(c["name"])') || return 1
+    [[ -n "$tokens" ]] || return 0
+    # shellcheck disable=SC2086  # one token per word, by construction.
+    info=$(brew info --cask --json=v2 $tokens 2>/dev/null) || return 1
+    # No process list means no way to know whether an upgrade would close
+    # something open. Casks that close nothing still go; the others are held.
+    procs=$(ps -axo comm= 2>/dev/null) || procs=
+    python3 -c '
+import json, os, plistlib, re, shlex, sys
+outdated, info, procs = sys.argv[1], sys.argv[2], sys.argv[3]
+want = {c["name"]: str(c["current_version"]) for c in json.loads(outdated).get("casks", [])}
+
+# Where Homebrew puts apps: HOMEBREW_CASK_OPTS=--appdir=..., else /Applications.
+appdir = "/Applications"
+opts = shlex.split(os.environ.get("HOMEBREW_CASK_OPTS", ""))
+for k, o in enumerate(opts):
+    if o.startswith("--appdir="):
+        appdir = o.split("=", 1)[1]
+    elif o == "--appdir" and k + 1 < len(opts):
+        appdir = opts[k + 1]
+appdir = os.path.expanduser(appdir)
+
+def vkey(v):
+    # "16.3.0" vs "16.4.0", "1.0" vs "1.0.0": numeric parts, zero-padded.
+    parts = [int(x) for x in re.findall(r"\d+", v)]
+    return parts + [0] * (8 - len(parts)) if parts else None
+
+for c in json.loads(info).get("casks", []):
+    tok = c["token"]
+    if tok not in want:
+        continue
+    latest = want[tok].split(",")[0]
+    apps, disruptive = [], False
+    for a in c.get("artifacts", []):
+        if "app" in a:
+            src = [x for x in a["app"] if isinstance(x, str)]
+            tgt = [x.get("target") for x in a["app"] if isinstance(x, dict) and x.get("target")]
+            apps += tgt or src[:1]
+        un = a.get("uninstall")
+        for u in un if isinstance(un, list) else []:
+            if isinstance(u, dict) and (u.get("quit") or u.get("signal")):
+                disruptive = True
+    if not apps:
+        print("upgrade\t%s\t" % tok); continue
+    name = os.path.basename(apps[0])
+    path = apps[0] if os.path.isabs(apps[0]) else os.path.join(appdir, apps[0])
+    have = None
+    try:
+        with open(os.path.join(path, "Contents", "Info.plist"), "rb") as f:
+            have = plistlib.load(f).get("CFBundleShortVersionString")
+    except Exception:
+        pass
+    if have:
+        hk, lk = vkey(str(have)), vkey(latest)
+        if (hk and lk and hk >= lk) or have == latest:
+            print("current\t%s\t%s" % (tok, have)); continue
+    if disruptive:
+        # Matched by bundle name anywhere, not only at the expected path: an
+        # app installed under another appdir is still the one brew would close.
+        if not procs:
+            print("unknown\t%s\t%s -> %s" % (tok, have or "?", latest)); continue
+        if ("/%s/Contents/" % name) in procs:
+            print("running\t%s\t%s -> %s" % (tok, have or "?", latest)); continue
+    print("upgrade\t%s\t%s" % (tok, have or "app missing"))
+' "$outdated" "$info" "$procs"
+}
+export -f cask_greedy_plan
 
 do_rustup() { rustup update; }
 
-# Scoped to the dotfiles checkout, not the caller's cwd. `mise upgrade` only
-# sees the config files of the directory it starts in (plus the global one), and
-# bump is run from $HOME, where there is no config: every run logged "All tools
-# are up to date" while ~/dotfiles/mise.toml's `node = "lts"` sat on the old LTS.
-# The global config is always in scope, so this covers it too.
+# Also the dotfiles checkout's config, not just the global one. `mise upgrade`
+# only sees the configs of the directory it starts in plus the global one, and
+# bump runs from $HOME (see the top of main): every run logged "All tools are up
+# to date" while ~/dotfiles/mise.toml's `node = "lts"` sat on the old LTS.
 do_mise() {
-    local dir=$HOME
-    [[ -d "$DOTFILES_DIR" ]] && dir=$DOTFILES_DIR
-    mise -C "$dir" upgrade
+    if [[ -d "$DOTFILES_DIR" ]]; then
+        mise -C "$DOTFILES_DIR" upgrade
+    else
+        note "mise: $DOTFILES_DIR does not exist, so only the global mise config was upgraded"
+        mise upgrade
+    fi
 }
-
-# Which npm is "the" npm depends on cwd: mise puts a per-directory node first on
-# PATH, so bump started inside a mise project upgraded that node's (empty)
-# global prefix instead of the one the shell uses everywhere else, and still
-# reported success. Resolve it the way a shell in $HOME would: mise's node if a
-# global mise config pins one, else Homebrew's (where the globals live today),
-# else whatever is on PATH. The chosen npm's directory goes first on PATH
-# because npm is a `#!/usr/bin/env node` script and would otherwise run under
-# the cwd's node anyway.
-npm_for_home() {
-    local p prefix
-    p=$(mise -C "$HOME" which npm 2>/dev/null) && [[ -x "$p" ]] && { printf '%s\n' "$p"; return 0; }
-    prefix=$(brew --prefix 2>/dev/null) && [[ -n "$prefix" && -x "$prefix/bin/npm" ]] \
-        && { printf '%s\n' "$prefix/bin/npm"; return 0; }
-    command -v npm
-}
-export -f npm_for_home
 
 # `npm update -g` stays within semver ranges, missing major bumps (ncu 16→22).
 # Re-install each globally-outdated package at @latest to cross majors too.
+# Which npm this is comes from main's normalization: the one a shell in $HOME
+# resolves, never whichever node the caller's directory had activated.
 do_npm() {
-    local out rc npm_bin
-    npm_bin=$(npm_for_home) || return 127
-    export PATH="${npm_bin%/*}:$PATH"   # own bash -c subshell; scope is this step.
-    echo "using $npm_bin"
-    out=$("$npm_bin" outdated -g --parseable --depth=0); rc=$?
+    local out rc
+    echo "using $(command -v npm)"
+    out=$(npm outdated -g --parseable --depth=0); rc=$?
     # `npm outdated` exits 1 when something IS outdated, so only >1 is a real
     # failure. This used to be `2>/dev/null` with the status dropped, which made
     # a broken npm indistinguishable from "nothing to do" and reported ✓.
@@ -338,7 +457,7 @@ do_npm() {
         [[ -n "$name" ]] && specs+=("${name}@latest")
     done < <(printf '%s\n' "$out" | awk -F: 'NF > 1 {print $4}' | sed 's/@[^@]*$//')
     ((${#specs[@]} == 0)) && { echo "nothing outdated"; return 0; }
-    "$npm_bin" install -g "${specs[@]}"
+    npm install -g "${specs[@]}"
 }
 
 do_krew()  { kubectl krew upgrade; }
@@ -367,6 +486,11 @@ do_gup()   { gup update; }
 # `uv tool install` CLIs (semgrep here) live in their own venvs that no other
 # step touches, so before this step they never moved.
 do_uv()    { uv tool upgrade --all; }
+# A line for the end of the run, for things a green step still needs to say.
+# The step's log is only shown when it fails, so this is the only way out.
+note() { printf '%s\n' "$*" >>"${BUMP_LOG%/*}/notes" 2>/dev/null; }
+export -f note
+
 export -f do_flake do_darwin do_brew do_brew_cask do_rustup do_mise do_npm \
           do_krew do_gh do_atuin do_cargo do_gup do_uv
 
@@ -426,7 +550,7 @@ g_atuin() { have atuin || _missing atuin; }
 
 # ---- plan ----------------------------------------------------------------
 declare -a DONE=() DONE_SECS=() FAILED=() SKIPPED=()
-declare -a SEL_NAME=() SEL_EMOJI=() SEL_LABEL=() SEL_SPIN=() SEL_PHASE=() SEL_SUDO=()
+declare -a SEL_NAME=() SEL_EMOJI=() SEL_LABEL=() SEL_SPIN=() SEL_PHASE=() SEL_SUDO=() SEL_AFTER=()
 SUDO_OK=true       # flipped to false below if the up-front `sudo -v` fails.
 SUDO_NEEDED=false  # only prompt when a selected step actually wants root.
 VERBOSE=false
@@ -472,13 +596,13 @@ validate_names() {
 }
 
 build_plan() {
-    local rec name emoji label spin phase sudo
+    local rec name emoji label spin phase sudo after
     for rec in "${STEPS[@]}"; do
-        IFS='|' read -r name emoji label spin phase sudo <<<"$rec"
+        IFS='|' read -r name emoji label spin phase sudo after <<<"$rec"
         [[ -n "$ONLY" ]] && ! in_list "$name" "$ONLY" && continue
         [[ -n "$SKIP" ]] &&   in_list "$name" "$SKIP" && continue
         SEL_NAME+=("$name"); SEL_EMOJI+=("$emoji"); SEL_LABEL+=("$label")
-        SEL_SPIN+=("$spin"); SEL_PHASE+=("$phase"); SEL_SUDO+=("$sudo")
+        SEL_SPIN+=("$spin"); SEL_PHASE+=("$phase"); SEL_SUDO+=("$sudo"); SEL_AFTER+=("$after")
         [[ "$sudo" == yes ]] && SUDO_NEEDED=true
     done
     return 0   # else the loop's last `[[ ]] &&` decides this function's status
@@ -518,11 +642,13 @@ build_runner() {
     # step. Redirecting into a process substitution keeps tee without putting
     # the step in a pipeline, and makes $fn's own status the runner's status
     # instead of leaning on pipefail.
+    # stdin is /dev/null: nothing here may prompt. Behind a spinner a prompt is
+    # invisible and only the watchdog ends it, 30 minutes later.
     local guard="trap ':' TERM; "
     if $VERBOSE; then
-        inner="${guard}set -uo pipefail; exec > >(tee \"\$BUMP_LOG\") 2>&1; $fn"
+        inner="${guard}set -uo pipefail; exec </dev/null > >(tee \"\$BUMP_LOG\") 2>&1; $fn"
     else
-        inner="${guard}set -uo pipefail; exec >\"\$BUMP_LOG\" 2>&1; $fn"
+        inner="${guard}set -uo pipefail; exec </dev/null >\"\$BUMP_LOG\" 2>&1; $fn"
     fi
     RUNNER=(bash -c "$inner")
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
@@ -703,13 +829,23 @@ run_serial() { # idx name emoji label spin
 # poll would never end. Results print in completion order, which is also the
 # only live feedback this phase has — there is no spinner over a group.
 run_parallel() { # idx... passed as parallel arrays via globals below
-    local -a p_idx=() p_name=() p_emoji=() p_label=()
+    local -a p_idx=() p_name=() p_emoji=() p_label=() p_after=()
     local i n
     for i in "${PAR_IDX[@]}"; do
         n="${SEL_NAME[$i]}"
         check_step "$((i + 1))" "$n" "${SEL_EMOJI[$i]}" "${SEL_LABEL[$i]}" "${SEL_SUDO[$i]}" || continue
         p_idx+=("$((i + 1))"); p_name+=("$n")
-        p_emoji+=("${SEL_EMOJI[$i]}"); p_label+=("${SEL_LABEL[$i]}")
+        p_emoji+=("${SEL_EMOJI[$i]}"); p_label+=("${SEL_LABEL[$i]}"); p_after+=("${SEL_AFTER[$i]}")
+    done
+    # Keep a dependency only when that step is actually launched here. A skipped
+    # or deselected one never writes a sentinel, and waiting on it would hang.
+    local j dep found chained=false
+    for i in "${!p_name[@]}"; do
+        dep="${p_after[$i]}"; found=false
+        if [[ -n "$dep" ]]; then
+            for j in "${!p_name[@]}"; do [[ "${p_name[$j]}" == "$dep" ]] && found=true; done
+        fi
+        if $found; then chained=true; else p_after[i]=; fi
     done
     ((${#p_name[@]} == 0)) && return 0
 
@@ -721,7 +857,19 @@ run_parallel() { # idx... passed as parallel arrays via globals below
         name="${p_name[$i]}"; log="$LOG_DIR/$name.log"
         rm -f "$LOG_DIR/$name.rc" "$LOG_DIR/$name.rc.part"   # never poll a stale one
         build_runner "$name"
+        dep="${p_after[$i]}"
         (
+            # Wait for the step whose toolchain this one runs on. Bounded by
+            # that step's own watchdog plus slack, so a dependency that died
+            # without a sentinel delays this one rather than hanging it.
+            if [[ -n "$dep" ]]; then
+                w0=$SECONDS
+                while [[ ! -f "$LOG_DIR/$dep.rc" ]]; do
+                    if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]] \
+                        && ((SECONDS - w0 > BUMP_TIMEOUT + 40)); then break; fi
+                    sleep 0.2
+                done
+            fi
             t0=$SECONDS
             BUMP_LOG="$log" "${RUNNER[@]}"
             rc=$?
@@ -746,6 +894,8 @@ run_parallel() { # idx... passed as parallel arrays via globals below
     local remaining=${#p_name[@]} rc dt deadline=0
     if ((BUMP_TIMEOUT > 0)) && [[ -n "$TIMEOUT_BIN" ]]; then
         deadline=$((SECONDS + BUMP_TIMEOUT + 60))
+        # A chained step can legitimately start a whole watchdog late.
+        $chained && deadline=$((deadline + BUMP_TIMEOUT + 40))
     fi
     local -a reported=()
     for i in "${!p_name[@]}"; do reported[i]=0; done
@@ -825,7 +975,7 @@ box_width() {
 # the directory it sits in is ~/.local/bin, not the checkout. Resolve the file
 # link, repeatedly, and only then take the directory.
 self_dir() {
-    local src=$0 dir
+    local src=$BUMP_SELF dir
     while [[ -L "$src" ]]; do
         dir=$(cd -P "$(dirname "$src")" 2>/dev/null && pwd) || return 1
         src=$(readlink "$src")
@@ -976,31 +1126,56 @@ summary() {
 # krew step upgrades it; rustup self-updates in the rustup step.
 SHADOW_OK=" kubectl-krew rustup "
 shadow_report() {
-    local prefix brewbin d f b
+    local prefix brewbin d f b seen=false
     local -a hits=()
-    have brew || return 0
-    prefix=$(brew --prefix 2>/dev/null) || return 0
+    prefix=${HOMEBREW_PREFIX:-}
+    if [[ -z "$prefix" || ! -d "$prefix/bin" ]]; then
+        have brew || return 0
+        prefix=$(brew --prefix 2>/dev/null) || return 0
+    fi
+    prefix=${prefix%/}
     [[ -n "$prefix" && -d "$prefix/bin" ]] || return 0
     brewbin="$prefix/bin"
     local IFS=:
-    for d in $PATH; do
-        [[ "$d" == "$brewbin" ]] && break
-        case "$d" in ""|"$prefix"|"$prefix"/*|*/mise/*) continue ;; esac
-        for f in "$d"/*; do
-            b=${f##*/}
-            [[ -f "$f" && -x "$f" && -x "$brewbin/$b" ]] || continue
-            [[ "$f" -ef "$brewbin/$b" ]] && continue
-            [[ "$SHADOW_OK" == *" $b "* ]] && continue
-            hits+=("$f")
+    set -f
+    # Only what comes BEFORE brew's bin can shadow it, so brew's bin has to be
+    # found on PATH at all. Without that check a PATH missing it, or holding it
+    # as `/opt/homebrew/bin/`, was walked to the end and /usr/bin/git, curl and
+    # ssh were all reported as shadowing brew's copies.
+    for d in $PATH; do [[ "${d%/}" == "$brewbin" ]] && { seen=true; break; }; done
+    if $seen; then
+        for d in $PATH; do
+            d=${d%/}
+            [[ "$d" == "$brewbin" ]] && break
+            case "$d" in ""|"$prefix"|"$prefix"/*|*/mise/*) continue ;; esac
+            set +f
+            for f in "$d"/*; do
+                b=${f##*/}
+                [[ -f "$f" && -x "$f" && -x "$brewbin/$b" ]] || continue
+                [[ "$f" -ef "$brewbin/$b" ]] && continue
+                [[ "$SHADOW_OK" == *" $b "* ]] && continue
+                hits+=("$f")
+            done
+            set -f
         done
-    done
+    fi
+    set +f
     ((${#hits[@]})) || return 0
-    printf '%s  ⚠️  bump updated the Homebrew copy, but your PATH runs another one first:%s\n' "$R" "$X"
+    # Worded for any run, including `--only npm` or a failed brew step: this is
+    # about the PATH, not about what this run happened to upgrade.
+    printf '%s  ⚠️  these run instead of the Homebrew copy that bump keeps up to date:%s\n' "$R" "$X"
     local tilde='~'   # a literal `~` in the replacement is tilde-expanded back
     for f in "${hits[@]}"; do
         printf '%s      %-40s shadows %s%s\n' "$D" "${f/#"$HOME"/$tilde}" "${brewbin}/${f##*/}" "$X"
     done
     printf '%s      remove the copy, or reorder PATH, so the updated one is what runs.%s\n' "$D" "$X"
+}
+
+# Things green steps still had to say (note() above), printed once at the end.
+print_notes() {
+    [[ -s "$LOG_DIR/notes" ]] || return 0
+    local l
+    while IFS= read -r l; do printf '%s  ⚠️  %s%s\n' "$R" "$l" "$X"; done <"$LOG_DIR/notes"
 }
 
 # Keep the last 20 runs. Names are timestamps, so no spaces and no glob chars.
@@ -1069,10 +1244,52 @@ done
 [[ -n "$ONLY" ]] && validate_names --only "$ONLY"
 [[ -n "$SKIP" ]] && validate_names --skip "$SKIP"
 build_plan
+
+# Every step runs as if from a fresh shell in $HOME, whatever directory bump was
+# started in. mise puts the caller's per-directory tools straight onto PATH and
+# cargo honours a rust-toolchain.toml in the cwd, so bump started inside a
+# project upgraded that project's node (an empty global prefix) and could build
+# cargo-binstall with a pinned old toolchain, all reported green.
+#
+# So: cd $HOME, then let mise and direnv themselves undo what they loaded for
+# the caller's directory. `mise hook-env` and `direnv export` diff against the
+# state they recorded (__MISE_DIFF / DIRENV_DIFF), so this also unsets the env
+# they exported, such as RUSTUP_TOOLCHAIN, GOROOT or a project's [env], not
+# just PATH. Then, belt and braces, drop any mise install dir left on PATH and
+# put mise's shims first, which resolve the way $HOME resolves.
+# Guards see the same environment as the steps, so "installed" means the same.
+cd "$HOME" 2>/dev/null || :
+if [[ -n "${__MISE_DIFF:-}" ]] && command -v mise >/dev/null 2>&1; then
+    eval "$(mise hook-env -f -q -s bash 2>/dev/null)" 2>/dev/null || :
+fi
+if [[ -n "${DIRENV_DIFF:-}" ]] && command -v direnv >/dev/null 2>&1; then
+    eval "$(direnv export bash 2>/dev/null)" 2>/dev/null || :
+fi
+_new_path=
+_old_ifs=$IFS; IFS=:
+set -f
+for _d in $PATH; do
+    case "$_d" in "$MISE_DATA"/installs/*|"$MISE_DATA"/shims) continue ;; esac
+    _new_path="${_new_path:+$_new_path:}$_d"
+done
+set +f
+IFS=$_old_ifs
+have mise && [[ -d "$MISE_DATA/shims" ]] && _new_path="$MISE_DATA/shims:$_new_path"
+export PATH="$_new_path"
+unset _new_path _old_ifs _d
+# A toolchain neither of those manage (nix develop, a nix-shell) cannot be
+# undone from here, and every step would quietly build and install with it.
+NIX_SHELL_WARNING=
+[[ -n "${IN_NIX_SHELL:-}" ]] && NIX_SHELL_WARNING=1
+
 TAG_W=$(( ${#SEL_NAME[@]} > 9 ? 7 : 5 ))   # width of "[12/12]" vs "[9/9]"
 ((${#SEL_NAME[@]} == 0)) && { printf '%sno steps selected%s\n' "$R" "$X" >&2; exit 2; }
 
 banner
+
+if [[ -n "$NIX_SHELL_WARNING" ]]; then
+    printf '%s  ⚠️  running inside a nix shell: its toolchain stays on PATH for every step. Run bump from a plain shell.%s\n' "$R" "$X"
+fi
 
 # Say so out loud rather than degrading quietly: a run with no watchdog is
 # exactly the run that can burn an hour behind the spinner.
@@ -1176,6 +1393,7 @@ done
 ((${#PAR_IDX[@]})) && run_parallel
 
 summary $((SECONDS - start))
+print_notes
 shadow_report
 date +%s >"$LOG_ROOT/.last" 2>/dev/null
 prune_logs
