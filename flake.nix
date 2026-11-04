@@ -317,11 +317,12 @@
               "karabiner-elements"
               "multipass"
               "ollama-app"
-              # third-party taps. All own tools; the five above y509 were installed
+              # third-party taps. All own tools; the ones above y509 were installed
               # and trusted by hand but never declared, so a fresh Mac lost them.
               "kanywst/tap/brtc"
               "kanywst/tap/chonk"
               "kanywst/tap/howbad"
+              "kanywst/tap/kwangmyong"
               "kanywst/tap/prpr"
               "kanywst/tap/whosent"
               "kanywst/tap/y509"
