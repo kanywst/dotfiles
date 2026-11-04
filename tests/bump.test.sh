@@ -623,13 +623,26 @@ cask_stub() {
     esac"
 }
 reset_stubs; rm -rf "$TMP/cache/bump"; cask_stub
-_busy_pid=
+_busy_pid=; _no_path_ps=
 if ps -axo comm= >/dev/null 2>&1; then
     # A symlink, not a copy: macOS kills a copied system binary on exec
     # (Killed: 9), while ps reports a symlinked launch under the link's path.
     ln -sf /bin/sleep "$TMP/apps/Busy.app/Contents/MacOS/Busy"
     "$TMP/apps/Busy.app/Contents/MacOS/Busy" 30 & _busy_pid=$!
-    sleep 0.3   # let it exec before bump lists processes
+    # Only macOS ps prints the executable's full path in `comm`; Linux (CI)
+    # prints a 15-char name, so there the running-app branch cannot be staged.
+    # Polled, not a fixed sleep: under load the exec can take a while to show.
+    _seen=
+    for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        # Captured, then matched, as bump does. `ps | grep -q` under pipefail
+        # failed at random: grep exits on the first match, ps dies of SIGPIPE,
+        # and the pipeline reports that as a miss.
+        case "$(ps -axo comm= 2>/dev/null)" in *"$TMP/apps/Busy.app/Contents/"*) _seen=1; break ;; esac
+        sleep 0.2
+    done
+    if [[ -z "$_seen" ]]; then
+        kill "$_busy_pid" 2>/dev/null; wait "$_busy_pid" 2>/dev/null; _busy_pid=; _no_path_ps=1
+    fi
 fi
 run HOMEBREW_CASK_OPTS="--appdir=$TMP/apps" -- --only brew-cask
 [[ -n "$_busy_pid" ]] && { kill "$_busy_pid" 2>/dev/null; wait "$_busy_pid" 2>/dev/null; }
@@ -644,6 +657,8 @@ if [[ -n "$_busy_pid" ]]; then
     assert_matches "an app that is behind and closed is upgraded" "$CASKLOG" "^BREW upgrade --cask cli behind$"
     assert_missing "a running app the upgrade would quit is not upgraded" "$CASKLOG" "behind busy"
     assert_contains "a running app that was held back is reported at the end" "$OUT" "busy is behind (1.0 -> 2.0) but running"
+elif [[ -n "$_no_path_ps" ]]; then
+    ok "(ps here has no executable paths, as on Linux: the running-app checks need macOS)"
 else
     # No process list (a sandbox): a cask whose upgrade quits its app is held
     # back rather than upgraded on the guess that nothing is open.
