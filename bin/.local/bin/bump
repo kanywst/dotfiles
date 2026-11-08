@@ -285,8 +285,12 @@ do_brew() {
     # and doing so skips a catalog refresh that only earns a worse error.
     brew_trust_probe || return 1
     # shellcheck disable=SC1007  # `VAR= cmd` un-sets VAR for this command only.
+    # --formula: a bare `brew upgrade` goes on to upgrade casks too, which is
+    # brew-cask's job. Without it the sudo-needing cask upgrades ran here, in a
+    # step marked sudo:no, and a cask-side error failed the formula step after
+    # every formula had already upgraded.
     HOMEBREW_NO_AUTO_UPDATE= brew update \
-        && brew upgrade \
+        && brew upgrade --formula \
         && brew cleanup
 }
 

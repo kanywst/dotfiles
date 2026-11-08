@@ -687,6 +687,16 @@ run -- --only brew-cask
 assert_eq "an unreadable outdated list does not fail the step" "$RC" "0"
 assert_contains "an unreadable outdated list is reported" "$OUT" "could not inspect auto_updates casks"
 
+# A bare `brew upgrade` goes on to the casks, so the formula step used to do the
+# cask step's sudo-needing work and fail on cask-side errors after every formula
+# had upgraded. It is formulae only now.
+reset_stubs; rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in trust) exit 1;; *) echo "BREW $*";; esac'
+run -- --only brew
+assert_matches "the formula step upgrades formulae only" \
+    "$(cat "$TMP"/cache/bump/*/brew.log 2>/dev/null)" '^BREW upgrade --formula$'
+
 # --- uv ---------------------------------------------------------------------
 reset_stubs
 rm -rf "$TMP/cache/bump"
