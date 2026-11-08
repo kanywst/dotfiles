@@ -49,8 +49,9 @@ require_stow() {
 
 # True when stow would skip $2 (a path relative to package $1) because of the
 # package's .stow-local-ignore. Approximates stow's rule: a pattern containing
-# "/" is matched against the path, any other against the basename. The ignore
-# file itself is never linked either.
+# "/" is matched against the path, any other against the whole basename (stow
+# anchors those). Bash regex is ERE, not Perl, so keep patterns to ERE. The
+# ignore file itself is never linked either.
 stow_ignored() {
     local pkg="$1" rel="$2" ignore="$DOTFILES_DIR/$1/.stow-local-ignore" pat
     [[ "$rel" == .stow-local-ignore ]] && return 0
@@ -62,7 +63,7 @@ stow_ignored() {
         if [[ "$pat" == */* ]]; then
             [[ "$rel" =~ $pat ]] && return 0
         else
-            [[ "${rel##*/}" =~ $pat ]] && return 0
+            [[ "${rel##*/}" =~ ^($pat)$ ]] && return 0
         fi
     done <"$ignore"
     return 1
