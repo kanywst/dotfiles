@@ -189,7 +189,7 @@ mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
 mise run bootstrap      # brew 外の層を導入 (mise/rustup/krew/gh ext/VS Code ext)
-mise run vscode-export  # 入っている VS Code 拡張を vscode/extensions.list に書き出す
+mise run vscode-export  # 新しく入れた VS Code 拡張を vscode/extensions.list に足す (消さない)
 mise run hooks          # lefthook install (.git/hooks/* を書く)
 mise run scan           # ツリー全体に gitleaks detect
 mise run test           # bump の回帰テスト (bash 5 と bash 3.2 の両方)

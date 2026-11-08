@@ -47,11 +47,35 @@ require_stow() {
     fi
 }
 
-# Move aside conflicting non-symlink files so stow can take over.
+# True when stow would skip $2 (a path relative to package $1) because of the
+# package's .stow-local-ignore. Approximates stow's rule: a pattern containing
+# "/" is matched against the path, any other against the basename. The ignore
+# file itself is never linked either.
+stow_ignored() {
+    local pkg="$1" rel="$2" ignore="$DOTFILES_DIR/$1/.stow-local-ignore" pat
+    [[ "$rel" == .stow-local-ignore ]] && return 0
+    [[ -f "$ignore" ]] || return 1
+    while IFS= read -r pat || [[ -n "$pat" ]]; do
+        pat="${pat%%#*}"
+        pat="${pat//[[:space:]]/}"
+        [[ -n "$pat" ]] || continue
+        if [[ "$pat" == */* ]]; then
+            [[ "$rel" =~ $pat ]] && return 0
+        else
+            [[ "${rel##*/}" =~ $pat ]] && return 0
+        fi
+    done <"$ignore"
+    return 1
+}
+
+# Move aside conflicting non-symlink files so stow can take over. Files stow
+# ignores are skipped: they never get linked, so moving $HOME's copy aside
+# would only displace it.
 adopt_conflicts() {
     local pkg="$1"
     while IFS= read -r -d '' src; do
         local rel="${src#"$DOTFILES_DIR/$pkg/"}"
+        stow_ignored "$pkg" "$rel" && continue
         local target="$HOME/$rel"
         if [[ -e "$target" && ! -L "$target" ]]; then
             info "Backing up $target → $target.backup"

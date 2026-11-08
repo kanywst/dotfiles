@@ -189,7 +189,7 @@ mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
 mise run bootstrap      # install non-brew layers (mise/rustup/krew/gh ext/VS Code ext)
-mise run vscode-export  # record installed VS Code extensions into vscode/extensions.list
+mise run vscode-export  # add newly installed VS Code extensions to vscode/extensions.list (never removes)
 mise run hooks          # lefthook install (writes .git/hooks/*)
 mise run scan           # gitleaks detect on the full tree
 mise run test           # bump regression suite, under bash 5 and bash 3.2

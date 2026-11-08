@@ -109,7 +109,7 @@ do_gh() {
 # The list is vscode/extensions.list; vscode-ext (same bin/ package) does the
 # install in one editor launch and reports any ID the editor couldn't find.
 do_vscode() {
-    have "${CODE_BIN:-code}" || { skip "${CODE_BIN:-code} CLI not on PATH — skipping VS Code extensions"; return; }
+    have "${CODE_BIN:-code}" || { skip "${CODE_BIN:-code} CLI not on PATH — skipping VS Code extensions (install VS Code and its 'code' command, then run: vscode-ext install)"; return; }
     local self_dir; self_dir="$(dirname "${BASH_SOURCE[0]}")"
     info "vscode: installing extensions from vscode/extensions.list"
     if DOTFILES_DIR="$DOTFILES_DIR" "$self_dir/vscode-ext" install; then
