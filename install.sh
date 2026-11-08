@@ -78,8 +78,12 @@ adopt_conflicts() {
         stow_ignored "$pkg" "$rel" && continue
         local target="$HOME/$rel"
         if [[ -e "$target" && ! -L "$target" ]]; then
-            info "Backing up $target → $target.backup"
-            mv "$target" "$target.backup"
+            # Never overwrite an earlier backup: it may hold the only copy of
+            # the original (a settings.json that was never in any repo).
+            local bak="$target.backup"
+            [[ -e "$bak" || -L "$bak" ]] && bak="$target.backup.$(date +%Y%m%d%H%M%S)"
+            info "Backing up $target → $bak"
+            mv "$target" "$bak"
         elif [[ -L "$target" ]]; then
             # `-ef` follows symlinks and tests "same file" (inode), which works
             # for stow's relative symlinks AND any old absolute ones. Only
