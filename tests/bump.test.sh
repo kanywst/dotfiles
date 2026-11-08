@@ -612,8 +612,8 @@ plist 1.0 "$TMP/apps/Behind.app"; plist 1.0 "$TMP/apps/Busy.app"
 # ahead: the app updated itself PAST the cask (reinstalling would downgrade it).
 # renamed: the app stanza installs Src.app under another name.
 # busy: closed by `signal`, not `quit`, which kills a running app just the same.
-OUTDATED='{"casks":[{"name":"cli","current_version":"3.0"},{"name":"selfup","current_version":"2.0"},{"name":"ahead","current_version":"2.0"},{"name":"renamed","current_version":"2.0"},{"name":"behind","current_version":"2.0"},{"name":"busy","current_version":"2.0,abc"}]}'
-INFO='{"casks":[{"token":"cli","artifacts":[{"binary":["cli"]}]},{"token":"selfup","artifacts":[{"app":["Selfup.app"]},{"uninstall":[{"quit":"x.selfup"}]}]},{"token":"ahead","artifacts":[{"app":["Ahead.app"]},{"uninstall":[{"quit":"x.ahead"}]}]},{"token":"renamed","artifacts":[{"app":["Src.app",{"target":"Renamed.app"}]},{"uninstall":[{"quit":"x.renamed"}]}]},{"token":"behind","artifacts":[{"app":["Behind.app"]},{"uninstall":[{"quit":"x.behind"}]}]},{"token":"busy","artifacts":[{"app":["Busy.app"]},{"uninstall":[{"signal":[["TERM","x.busy"]]}]}]}]}'
+OUTDATED='{"casks":[{"name":"cli","current_version":"3.0"},{"name":"selfup","current_version":"2.0"},{"name":"ahead","current_version":"2.0"},{"name":"renamed","current_version":"2.0"},{"name":"behind","current_version":"2.0"},{"name":"busy","current_version":"2.0,abc"},{"name":"gone","current_version":"2.0"}]}'
+INFO='{"casks":[{"token":"cli","artifacts":[{"binary":["cli"]}]},{"token":"selfup","artifacts":[{"app":["Selfup.app"]},{"uninstall":[{"quit":"x.selfup"}]}]},{"token":"ahead","artifacts":[{"app":["Ahead.app"]},{"uninstall":[{"quit":"x.ahead"}]}]},{"token":"renamed","artifacts":[{"app":["Src.app",{"target":"Renamed.app"}]},{"uninstall":[{"quit":"x.renamed"}]}]},{"token":"behind","artifacts":[{"app":["Behind.app"]},{"uninstall":[{"quit":"x.behind"}]}]},{"token":"busy","artifacts":[{"app":["Busy.app"]},{"uninstall":[{"signal":[["TERM","x.busy"]]}]}]},{"token":"gone","artifacts":[{"app":["Gone.app"]},{"uninstall":[{"quit":"x.gone"}]}]}]}'
 cask_stub() {
     stub brew "case \"\$1 \$2\" in
         'trust --json') exit 1 ;;
@@ -653,6 +653,10 @@ assert_matches "an auto_updates cask with no app to quit is upgraded" "$CASKLOG"
 assert_contains "an app that already updated itself is left alone" "$CASKLOG" "selfup: the app already updated itself"
 assert_contains "an app that updated past the cask is not downgraded" "$CASKLOG" "ahead: the app already updated itself (2.1.0)"
 assert_contains "an app installed under a target name is found by that name" "$CASKLOG" "renamed: the app already updated itself (2.0.0)"
+# Ollama.app was deleted by hand while its cask stayed installed; the upgrade
+# then failed on "App source ... is not there".
+assert_missing "a cask whose app is gone is not upgraded" "$CASKLOG" "gone"
+assert_contains "a cask whose app is gone is reported with the fix" "$OUT" "brew reinstall --cask gone"
 if [[ -n "$_busy_pid" ]]; then
     assert_matches "an app that is behind and closed is upgraded" "$CASKLOG" "^BREW upgrade --cask cli behind$"
     assert_missing "a running app the upgrade would quit is not upgraded" "$CASKLOG" "behind busy"

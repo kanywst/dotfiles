@@ -364,6 +364,7 @@ do_brew_cask() {
         case "$action" in
             upgrade) up+=("$token") ;;
             current) echo "$token: the app already updated itself ($detail); leaving it" ;;
+            missing) note "brew-cask: $token is installed but $detail is gone, so upgrading it would fail. Reinstall: brew reinstall --cask $token, or drop it: brew uninstall --cask $token" ;;
             running) note "brew-cask: $token is behind ($detail) but running, and upgrading would quit it. Quit it, then: bump --only brew-cask" ;;
             unknown) note "brew-cask: $token is behind ($detail), but whether it is running could not be checked and upgrading would quit it, so it was held back" ;;
         esac
@@ -376,7 +377,8 @@ do_brew_cask() {
 
 # One line per outdated auto_updates cask: <action>\t<token>\t<detail>, where
 # action is upgrade, current (its app already reports the cask's version or a
-# newer one), running (behind, its uninstall quits or signals it, and it is open
+# newer one), missing (the cask declares an app that is not there, so the
+# upgrade's uninstall half fails on it: Ollama.app, 2026-11-08), running (behind, its uninstall quits or signals it, and it is open
 # right now) or unknown (as running, but no process list could be read). Exits
 # non-zero when it cannot tell at all, and the caller then upgrades none.
 #
@@ -434,6 +436,8 @@ for c in json.loads(info).get("casks", []):
         print("upgrade\t%s\t" % tok); continue
     name = os.path.basename(apps[0])
     path = apps[0] if os.path.isabs(apps[0]) else os.path.join(appdir, apps[0])
+    if not os.path.isdir(path):
+        print("missing\t%s\t%s" % (tok, path)); continue
     have = None
     try:
         with open(os.path.join(path, "Contents", "Info.plist"), "rb") as f:
