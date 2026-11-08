@@ -257,14 +257,15 @@ mise run bootstrap   # or: bootstrap
 The `vscode/` stow package links `settings.json` into `~/Library/Application Support/Code/User/`. The extension set is `vscode/extensions.list` (lowercased `publisher.name`, `LC_ALL=C` sorted), which `vscode/.stow-local-ignore` keeps out of `$HOME`; `vscode-ext` (in `bin/`) reads it from the checkout.
 
 ```bash
-vscode-ext install         # install every listed extension in one editor launch (--force, so it also updates)
-vscode-ext export          # rewrite the list from what is installed (this is how you prune)
-vscode-ext export --merge  # add newly installed ones, never remove any
-vscode-ext diff            # exit 1 when installed and listed differ
-vscode-ext lint            # list is canonical; needs no editor, runs in CI and `mise run lint`
+vscode-ext install           # install the listed extensions that are missing, in one editor launch
+vscode-ext install --update  # also reinstall the rest at their latest version
+vscode-ext export            # add newly installed ones to the list, never remove any
+vscode-ext export --prune    # rewrite the list to exactly what is installed
+vscode-ext diff              # exit 1 when installed and listed differ
+vscode-ext lint              # list is canonical; needs no editor, runs in CI and `mise run lint`
 ```
 
-`bootstrap` runs `vscode-ext install` when the `code` CLI is on `PATH` (Command Palette → `Shell Command: Install 'code' command in PATH`). `bump` does not touch extensions; re-run `vscode-ext install` to update them. `CODE_BIN=cursor` / `codium` drives another editor, but those install from Open VSX, where some Marketplace IDs do not exist. `keybindings.json`, snippets and `mcp.json` are not tracked.
+`bootstrap` runs `vscode-ext install` when the `code` CLI is on `PATH` (Command Palette → `Shell Command: Install 'code' command in PATH`). `bump` does not touch extensions; VS Code updates them itself, or run `vscode-ext install --update`. `CODE_BIN=cursor` / `codium` drives another editor, but those install from Open VSX, where some Marketplace IDs do not exist. `keybindings.json`, snippets and `mcp.json` are not tracked.
 
 ## Daily-driver reference
 

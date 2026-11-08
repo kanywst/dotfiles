@@ -65,10 +65,8 @@ description = "Install non-brew layers (mise runtimes, rustup, krew, gh ext)"
 run = "bin/.local/bin/bootstrap"
 
 [tasks.vscode-export]
-description = "Add newly installed VS Code extensions to vscode/extensions.list (never removes; prune with `vscode-ext export`)"
-# --merge: a bare export mirrors the installed set, so on a machine that has not
-# run `vscode-ext install` yet it would shrink the list to almost nothing.
-run = 'DOTFILES_DIR="${MISE_PROJECT_ROOT:-$PWD}" bin/.local/bin/vscode-ext export --merge'
+description = "Add newly installed VS Code extensions to vscode/extensions.list (never removes; prune with `vscode-ext export --prune`)"
+run = 'DOTFILES_DIR="${MISE_PROJECT_ROOT:-$PWD}" bin/.local/bin/vscode-ext export'
 
 [tasks.hooks]
 description = "Install lefthook git hooks"

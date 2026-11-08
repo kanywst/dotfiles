@@ -8,9 +8,10 @@
 # VS Code reads.
 #
 # Usage:
-#   vscode-ext install         # install every listed extension (idempotent)
-#   vscode-ext export          # rewrite the list from the installed set (prunes)
-#   vscode-ext export --merge  # add newly installed ones, never remove any
+#   vscode-ext install           # install listed extensions that are missing
+#   vscode-ext install --update  # also reinstall the rest at their latest version
+#   vscode-ext export            # add newly installed ones to the list, never remove
+#   vscode-ext export --prune    # rewrite the list to exactly the installed set
 #   vscode-ext diff            # show drift; exits 1 when installed != list
 #   vscode-ext lint            # check the list is canonical (no editor needed)
 #   vscode-ext -h|--help
@@ -70,24 +71,41 @@ tracked_extensions() {
 }
 
 cmd_install() {
+    local update=0
+    case "${1:-}" in
+        --update) update=1 ;;
+        "") ;;
+        *) err "unknown option '$1' (expected --update)"; exit 2 ;;
+    esac
     require_list
     require_code_bin
     # uniq: a hand-edited duplicate would otherwise be miscounted.
-    local tracked ext missing installed
+    local tracked todo ext missing installed
     tracked="$(tracked_extensions | LC_ALL=C uniq)"
+    installed="$(installed_extensions)"
+    # Default: only what is missing, so a re-run is a no-op and never moves a
+    # working editor to newer versions. --update hands the whole list to the
+    # editor with --force, which reinstalls each one at its latest version.
+    if ((update)); then
+        todo="$tracked"
+    else
+        todo="$(LC_ALL=C comm -13 <(emit "$installed") <(emit "$tracked"))"
+    fi
     local args=() count=0
     while IFS= read -r ext; do
         args+=(--install-extension "$ext")
         count=$((count + 1))
-    done < <(emit "$tracked")
+    done < <(emit "$todo")
     if ((count == 0)); then
-        echo "extensions.list is empty; nothing to install."
+        echo "All tracked extensions installed; nothing to do."
         return 0
     fi
+    ((update)) && args+=(--force)
     echo "Installing $count extensions..."
-    # One editor launch for the whole list. --force also updates to latest.
-    # Don't abort on an unknown ID; report what is still missing below.
-    "$CODE_BIN" "${args[@]}" --force || true
+    # One editor launch for the whole batch. Don't abort on an unknown ID or a
+    # network error; the editor's own stderr says why, and the check below
+    # reports what is still missing.
+    "$CODE_BIN" "${args[@]}" || true
     installed="$(installed_extensions)"
     missing="$(LC_ALL=C comm -13 <(emit "$installed") <(emit "$tracked"))"
     if [[ -n "$missing" ]]; then
@@ -105,14 +123,17 @@ cmd_export() {
     tmp="$(mktemp "${TMPDIR:-/tmp}/vscode-ext.XXXXXX")"
     # shellcheck disable=SC2064  # expand now: $tmp is local and gone by EXIT
     trap "rm -f '$tmp'" EXIT
+    # Merge is the default: mirroring a machine that has not run `install`
+    # yet, or another editor via CODE_BIN, would shrink the list to whatever
+    # that editor happens to have. Pruning is the explicit --prune.
     case "${1:-}" in
-        --merge)
+        "")
             installed_extensions >"$tmp"
             tracked_extensions >>"$tmp"
             LC_ALL=C sort -u "$tmp" -o "$tmp"
             ;;
-        "") installed_extensions >"$tmp" ;;
-        *) err "unknown option '$1' (expected --merge)"; exit 2 ;;
+        --prune) installed_extensions >"$tmp" ;;
+        *) err "unknown option '$1' (expected --prune)"; exit 2 ;;
     esac
     mkdir -p "$(dirname "$LIST_FILE")"
     # Write through with cat, not mv, to keep the file's mode (and a symlink).
@@ -167,7 +188,7 @@ cmd_lint() {
 }
 
 case "${1:-}" in
-    install) cmd_install ;;
+    install) shift; cmd_install "$@" ;;
     export) shift; cmd_export "$@" ;;
     diff) cmd_diff ;;
     lint) cmd_lint ;;

@@ -257,14 +257,15 @@ mise run bootstrap   # または: bootstrap
 stow パッケージ `vscode/` は `settings.json` を `~/Library/Application Support/Code/User/` に link する。拡張の一覧は `vscode/extensions.list` (小文字の `publisher.name` を `LC_ALL=C` でソート) で、`vscode/.stow-local-ignore` により `$HOME` には link されない。`bin/` の `vscode-ext` がチェックアウトから直接読む。
 
 ```bash
-vscode-ext install         # 一覧の拡張を 1 回の起動で全部入れる (--force なので更新も兼ねる)
-vscode-ext export          # 入っている拡張で一覧を書き直す (削除もこれで反映)
-vscode-ext export --merge  # 新しく入れた分だけ足し、何も消さない
-vscode-ext diff            # 入っている拡張と一覧がずれていれば exit 1
-vscode-ext lint            # 一覧が正規形か確認。エディタ不要で、CI と `mise run lint` で走る
+vscode-ext install           # 一覧のうち入っていない拡張を 1 回の起動でまとめて入れる
+vscode-ext install --update  # 入っている分も最新版で入れ直す
+vscode-ext export            # 新しく入れた分だけ一覧に足し、何も消さない
+vscode-ext export --prune    # 一覧を入っている拡張とぴったり同じに書き直す
+vscode-ext diff              # 入っている拡張と一覧がずれていれば exit 1
+vscode-ext lint              # 一覧が正規形か確認。エディタ不要で、CI と `mise run lint` で走る
 ```
 
-`bootstrap` は `code` CLI が `PATH` にあれば `vscode-ext install` を走らせる (コマンドパレット → `Shell Command: Install 'code' command in PATH`)。`bump` は拡張を更新しないので、更新は `vscode-ext install` を再実行する。`CODE_BIN=cursor` / `codium` で別エディタも扱えるが、そちらは Open VSX から入れるため、Marketplace にしかない ID は入らない。`keybindings.json`、snippets、`mcp.json` は管理しない。
+`bootstrap` は `code` CLI が `PATH` にあれば `vscode-ext install` を走らせる (コマンドパレット → `Shell Command: Install 'code' command in PATH`)。`bump` は拡張を更新しない。更新は VS Code 自身に任せるか、`vscode-ext install --update` を使う。`CODE_BIN=cursor` / `codium` で別エディタも扱えるが、そちらは Open VSX から入れるため、Marketplace にしかない ID は入らない。`keybindings.json`、snippets、`mcp.json` は管理しない。
 
 ## 日常リファレンス
 
