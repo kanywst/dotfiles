@@ -23,7 +23,7 @@ exec zsh -l
 
 `install.sh` is a thin GNU-stow wrapper. It links every package in its
 `STOW_PACKAGES` list (`zsh/`, `git/`, `starship/`, `atuin/`, `ghostty/`, `jj/`,
-`karabiner/`, `bin/`, `homebrew/`) into `$HOME` and renames any colliding file to `*.backup` first.
+`karabiner/`, `bin/`, `homebrew/`, `vscode/`) into `$HOME` and renames any colliding file to `*.backup` first.
 
 ## Why
 
@@ -188,7 +188,8 @@ mise tasks ls           # list repo-level mise tasks
 mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
-mise run bootstrap      # install non-brew layers (mise/rustup/krew/gh ext)
+mise run bootstrap      # install non-brew layers (mise/rustup/krew/gh ext/VS Code ext)
+mise run vscode-export  # record installed VS Code extensions into vscode/extensions.list
 mise run hooks          # lefthook install (writes .git/hooks/*)
 mise run scan           # gitleaks detect on the full tree
 mise run test           # bump regression suite, under bash 5 and bash 3.2
@@ -244,12 +245,26 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 ### 8. Non-brew layers
 
 Some managers can't be declared in the flake — mise runtimes, rustup
-toolchains, krew plugins, gh extensions. `bootstrap` installs them
-idempotently (re-running only fills gaps); `bump` keeps them updated later.
+toolchains, krew plugins, gh extensions, VS Code extensions. `bootstrap` installs them
+idempotently (re-running only fills gaps); `bump` keeps them updated later, except the VS Code extensions (see below).
 
 ```bash
 mise run bootstrap   # or: bootstrap
 ```
+
+### 9. VS Code
+
+The `vscode/` stow package links `settings.json` into `~/Library/Application Support/Code/User/`. The extension set is `vscode/extensions.list` (lowercased `publisher.name`, `LC_ALL=C` sorted), which `vscode/.stow-local-ignore` keeps out of `$HOME`; `vscode-ext` (in `bin/`) reads it from the checkout.
+
+```bash
+vscode-ext install         # install every listed extension in one editor launch (--force, so it also updates)
+vscode-ext export          # rewrite the list from what is installed (this is how you prune)
+vscode-ext export --merge  # add newly installed ones, never remove any
+vscode-ext diff            # exit 1 when installed and listed differ
+vscode-ext lint            # list is canonical; needs no editor, runs in CI and `mise run lint`
+```
+
+`bootstrap` runs `vscode-ext install` when the `code` CLI is on `PATH` (Command Palette → `Shell Command: Install 'code' command in PATH`). `bump` does not touch extensions; re-run `vscode-ext install` to update them. `CODE_BIN=cursor` / `codium` drives another editor, but those install from Open VSX, where some Marketplace IDs do not exist. `keybindings.json`, snippets and `mcp.json` are not tracked.
 
 ## Daily-driver reference
 

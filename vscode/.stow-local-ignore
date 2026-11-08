@@ -1,0 +1,3 @@
+# extensions.list is read by bin/.local/bin/vscode-ext from the repo, not by
+# VS Code, so stow must not link it into $HOME.
+^extensions\.list$

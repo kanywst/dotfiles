@@ -22,7 +22,7 @@ exec zsh -l
 ```
 
 `install.sh` は GNU stow の薄いラッパー。`STOW_PACKAGES` に並べたパッケージ
-(`zsh/` / `git/` / `starship/` / `atuin/` / `ghostty/` / `jj/` / `karabiner/` / `bin/` / `homebrew/`) を
+(`zsh/` / `git/` / `starship/` / `atuin/` / `ghostty/` / `jj/` / `karabiner/` / `bin/` / `homebrew/` / `vscode/`) を
 `$HOME` に link し、衝突するファイルは先に `*.backup` へリネームする。
 
 ## なぜ
@@ -188,7 +188,8 @@ mise tasks ls           # repo レベルの mise タスク一覧
 mise run lint           # zsh -n + shellcheck + markdownlint + actionlint
 mise run install        # ./install.sh
 mise run darwin-switch  # darwin-rebuild switch
-mise run bootstrap      # brew 外の層を導入 (mise/rustup/krew/gh ext)
+mise run bootstrap      # brew 外の層を導入 (mise/rustup/krew/gh ext/VS Code ext)
+mise run vscode-export  # 入っている VS Code 拡張を vscode/extensions.list に書き出す
 mise run hooks          # lefthook install (.git/hooks/* を書く)
 mise run scan           # ツリー全体に gitleaks detect
 mise run test           # bump の回帰テスト (bash 5 と bash 3.2 の両方)
@@ -244,12 +245,26 @@ sudo nix run github:LnL7/nix-darwin/master#darwin-uninstaller
 ### 8. brew 外の層
 
 flake で宣言できない管理系 (mise runtime、rustup toolchain、krew プラグイン、
-gh 拡張) がある。`bootstrap` がそれらを冪等に導入する (再実行は不足分だけ埋める)。
-更新はあとで `bump` が面倒を見る。
+gh 拡張、VS Code 拡張) がある。`bootstrap` がそれらを冪等に導入する (再実行は不足分だけ埋める)。
+更新はあとで `bump` が面倒を見る (VS Code 拡張だけは別、下記)。
 
 ```bash
 mise run bootstrap   # または: bootstrap
 ```
+
+### 9. VS Code
+
+stow パッケージ `vscode/` は `settings.json` を `~/Library/Application Support/Code/User/` に link する。拡張の一覧は `vscode/extensions.list` (小文字の `publisher.name` を `LC_ALL=C` でソート) で、`vscode/.stow-local-ignore` により `$HOME` には link されない。`bin/` の `vscode-ext` がチェックアウトから直接読む。
+
+```bash
+vscode-ext install         # 一覧の拡張を 1 回の起動で全部入れる (--force なので更新も兼ねる)
+vscode-ext export          # 入っている拡張で一覧を書き直す (削除もこれで反映)
+vscode-ext export --merge  # 新しく入れた分だけ足し、何も消さない
+vscode-ext diff            # 入っている拡張と一覧がずれていれば exit 1
+vscode-ext lint            # 一覧が正規形か確認。エディタ不要で、CI と `mise run lint` で走る
+```
+
+`bootstrap` は `code` CLI が `PATH` にあれば `vscode-ext install` を走らせる (コマンドパレット → `Shell Command: Install 'code' command in PATH`)。`bump` は拡張を更新しないので、更新は `vscode-ext install` を再実行する。`CODE_BIN=cursor` / `codium` で別エディタも扱えるが、そちらは Open VSX から入れるため、Marketplace にしかない ID は入らない。`keybindings.json`、snippets、`mcp.json` は管理しない。
 
 ## 日常リファレンス
 
