@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# vscode-ext — keep the VS Code extension set in git and reinstall it.
+#
+# The list lives at $DOTFILES_DIR/vscode/extensions.list, one lowercased
+# `publisher.name` per line, LC_ALL=C sorted. The `vscode` stow package links
+# settings.json into VS Code's User dir; the list itself is excluded from stow
+# (vscode/.stow-local-ignore) because it is data for this script, not a file
+# VS Code reads.
+#
+# Usage:
+#   vscode-ext install           # install listed extensions that are missing
+#   vscode-ext install --update  # also reinstall the rest at their latest version
+#   vscode-ext export            # add newly installed ones to the list, never remove
+#   vscode-ext export --prune    # rewrite the list to exactly the installed set
+#   vscode-ext diff            # show drift; exits 1 when installed != list
+#   vscode-ext lint            # check the list is canonical (no editor needed)
+#   vscode-ext -h|--help
+#
+# Environment:
+#   CODE_BIN=<cli>      # editor CLI (default: code). cursor / codium / code-insiders
+#                       # work too, but they install from Open VSX, where some
+#                       # Marketplace IDs do not exist.
+#   DOTFILES_DIR=<dir>  # dotfiles checkout (default: ~/dotfiles)
+
+set -euo pipefail
+
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+LIST_FILE="${VSCODE_EXT_LIST:-$DOTFILES_DIR/vscode/extensions.list}"
+CODE_BIN="${CODE_BIN:-code}"
+
+err() { printf 'error: %s\n' "$*" >&2; }
+
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; }
+
+require_list() {
+    [[ -f "$LIST_FILE" ]] && return 0
+    err "$LIST_FILE not found (set DOTFILES_DIR to your dotfiles checkout)"
+    exit 1
+}
+
+# Called lazily so `lint` works without the editor (CI has none).
+require_code_bin() {
+    command -v "$CODE_BIN" >/dev/null 2>&1 && return 0
+    err "'$CODE_BIN' CLI not found on PATH."
+    echo "  Install it from VS Code: Command Palette -> 'Shell Command: Install code command in PATH'." >&2
+    echo "  Or point at another editor: CODE_BIN=cursor vscode-ext ..." >&2
+    exit 1
+}
+
+# Print a value only when non-empty. A bare echo of an empty var prints a blank
+# line, which comm would treat as an extension ID (phantom drift).
+emit() {
+    [[ -n "$1" ]] && printf '%s\n' "$1"
+    return 0
+}
+
+# Installed IDs, lowercased + sorted. tr -d '\r': the CLI emits CRLF on WSL.
+installed_extensions() {
+    require_code_bin
+    "$CODE_BIN" --list-extensions | tr -d '\r' | tr '[:upper:]' '[:lower:]' | LC_ALL=C sort
+}
+
+# Tracked IDs: strip comments / blanks, lowercase, sort. sed rather than
+# grep -v for the blank lines: grep exits 1 on an all-blank list, which would
+# trip pipefail in every caller.
+tracked_extensions() {
+    [[ -f "$LIST_FILE" ]] || return 0
+    sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' "$LIST_FILE" \
+        | tr '[:upper:]' '[:lower:]' \
+        | LC_ALL=C sort
+}
+
+cmd_install() {
+    local update=0
+    case "${1:-}" in
+        --update) update=1 ;;
+        "") ;;
+        *) err "unknown option '$1' (expected --update)"; exit 2 ;;
+    esac
+    require_list
+    require_code_bin
+    # uniq: a hand-edited duplicate would otherwise be miscounted.
+    local tracked todo ext missing installed
+    tracked="$(tracked_extensions | LC_ALL=C uniq)"
+    installed="$(installed_extensions)"
+    # Default: only what is missing, so a re-run is a no-op and never moves a
+    # working editor to newer versions. --update hands the whole list to the
+    # editor with --force, which reinstalls each one at its latest version.
+    if ((update)); then
+        todo="$tracked"
+    else
+        todo="$(LC_ALL=C comm -13 <(emit "$installed") <(emit "$tracked"))"
+    fi
+    local args=() count=0
+    while IFS= read -r ext; do
+        args+=(--install-extension "$ext")
+        count=$((count + 1))
+    done < <(emit "$todo")
+    if ((count == 0)); then
+        echo "All tracked extensions installed; nothing to do."
+        return 0
+    fi
+    ((update)) && args+=(--force)
+    echo "Installing $count extensions..."
+    # One editor launch for the whole batch. Don't abort on an unknown ID or a
+    # network error; the editor's own stderr says why, and the check below
+    # reports what is still missing.
+    "$CODE_BIN" "${args[@]}" || true
+    installed="$(installed_extensions)"
+    missing="$(LC_ALL=C comm -13 <(emit "$installed") <(emit "$tracked"))"
+    if [[ -n "$missing" ]]; then
+        echo >&2
+        echo "Failed to install (not found for '$CODE_BIN'):" >&2
+        emit "$missing" | sed 's/^/  - /' >&2
+        return 1
+    fi
+    echo "All tracked extensions installed."
+}
+
+cmd_export() {
+    require_code_bin
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/vscode-ext.XXXXXX")"
+    # shellcheck disable=SC2064  # expand now: $tmp is local and gone by EXIT
+    trap "rm -f '$tmp'" EXIT
+    # Merge is the default: mirroring a machine that has not run `install`
+    # yet, or another editor via CODE_BIN, would shrink the list to whatever
+    # that editor happens to have. Pruning is the explicit --prune.
+    case "${1:-}" in
+        "")
+            installed_extensions >"$tmp"
+            tracked_extensions >>"$tmp"
+            LC_ALL=C sort -u "$tmp" -o "$tmp"
+            ;;
+        --prune) installed_extensions >"$tmp" ;;
+        *) err "unknown option '$1' (expected --prune)"; exit 2 ;;
+    esac
+    mkdir -p "$(dirname "$LIST_FILE")"
+    # Write through with cat, not mv, to keep the file's mode (and a symlink).
+    cat "$tmp" >"$LIST_FILE"
+    echo "Exported $(grep -c '' "$LIST_FILE" || true) extensions to $LIST_FILE"
+}
+
+cmd_diff() {
+    require_list
+    local installed tracked to_add to_remove drift=0
+    installed="$(installed_extensions)"
+    tracked="$(tracked_extensions | LC_ALL=C uniq)"
+    to_add="$(LC_ALL=C comm -23 <(emit "$installed") <(emit "$tracked"))"
+    to_remove="$(LC_ALL=C comm -13 <(emit "$installed") <(emit "$tracked"))"
+    if [[ -n "$to_add" ]]; then
+        drift=1
+        echo "Installed but NOT in extensions.list (vscode-ext export to record):"
+        emit "$to_add" | sed 's/^/  + /'
+    fi
+    if [[ -n "$to_remove" ]]; then
+        drift=1
+        echo "In extensions.list but NOT installed (vscode-ext install to add):"
+        emit "$to_remove" | sed 's/^/  - /'
+    fi
+    ((drift)) || echo "In sync: installed extensions match extensions.list."
+    return "$drift"
+}
+
+cmd_lint() {
+    require_list
+    local tracked dupes canon status=0
+    tracked="$(tracked_extensions)"
+    canon="$(mktemp "${TMPDIR:-/tmp}/vscode-ext.XXXXXX")"
+    # shellcheck disable=SC2064  # expand now: $canon is local and gone by EXIT
+    trap "rm -f '$canon'" EXIT
+    emit "$tracked" >"$canon"
+    # A canonical file round-trips through tracked_extensions unchanged.
+    if ! diff -u "$LIST_FILE" "$canon" >/dev/null; then
+        err "extensions.list is not canonical (lowercase + LC_ALL=C sort, no comments/blanks)."
+        echo "Re-run 'vscode-ext export' to regenerate it. Diff (- file, + canonical):" >&2
+        diff -u "$LIST_FILE" "$canon" | tail -n +4 >&2 || true
+        status=1
+    fi
+    dupes="$(emit "$tracked" | LC_ALL=C uniq -d)"
+    if [[ -n "$dupes" ]]; then
+        err "duplicate extension IDs:"
+        emit "$dupes" | sed 's/^/  /' >&2
+        status=1
+    fi
+    ((status)) || echo "extensions.list is canonical."
+    return "$status"
+}
+
+case "${1:-}" in
+    install) shift; cmd_install "$@" ;;
+    export) shift; cmd_export "$@" ;;
+    diff) cmd_diff ;;
+    lint) cmd_lint ;;
+    -h|--help|"") usage ;;
+    *) err "unknown command: $1"; echo "try: vscode-ext --help" >&2; exit 2 ;;
+esac

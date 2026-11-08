@@ -68,6 +68,15 @@ jobs:
       - name: run the suite
         run: tests/bump.test.sh
 
+  vscode-extensions:
+    name: vscode extensions.list is canonical
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Needs no editor: lint only reads the list.
+      - name: vscode-ext lint
+        run: DOTFILES_DIR=. bin/.local/bin/vscode-ext lint
+
   markdownlint:
     name: markdownlint
     runs-on: ubuntu-latest

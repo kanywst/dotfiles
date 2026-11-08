@@ -12,7 +12,7 @@
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STOW_PACKAGES=(zsh git starship atuin ghostty jj karabiner bin homebrew)
+STOW_PACKAGES=(zsh git starship atuin ghostty jj karabiner bin homebrew vscode)
 
 # Homebrew resolves its trust store to "$XDG_CONFIG_HOME/homebrew/trust.json",
 # but the nix-darwin activation runs `brew bundle` under
@@ -47,15 +47,44 @@ require_stow() {
     fi
 }
 
-# Move aside conflicting non-symlink files so stow can take over.
+# True when stow would skip $2 (a path relative to package $1) because of the
+# package's .stow-local-ignore. Approximates stow's rule: a pattern containing
+# "/" is matched against the path, any other against the whole basename (stow
+# anchors those). Bash regex is ERE, not Perl, so keep patterns to ERE. The
+# ignore file itself is never linked either.
+stow_ignored() {
+    local pkg="$1" rel="$2" ignore="$DOTFILES_DIR/$1/.stow-local-ignore" pat
+    [[ "$rel" == .stow-local-ignore ]] && return 0
+    [[ -f "$ignore" ]] || return 1
+    while IFS= read -r pat || [[ -n "$pat" ]]; do
+        pat="${pat%%#*}"
+        pat="${pat//[[:space:]]/}"
+        [[ -n "$pat" ]] || continue
+        if [[ "$pat" == */* ]]; then
+            [[ "$rel" =~ $pat ]] && return 0
+        else
+            [[ "${rel##*/}" =~ ^($pat)$ ]] && return 0
+        fi
+    done <"$ignore"
+    return 1
+}
+
+# Move aside conflicting non-symlink files so stow can take over. Files stow
+# ignores are skipped: they never get linked, so moving $HOME's copy aside
+# would only displace it.
 adopt_conflicts() {
     local pkg="$1"
     while IFS= read -r -d '' src; do
         local rel="${src#"$DOTFILES_DIR/$pkg/"}"
+        stow_ignored "$pkg" "$rel" && continue
         local target="$HOME/$rel"
         if [[ -e "$target" && ! -L "$target" ]]; then
-            info "Backing up $target → $target.backup"
-            mv "$target" "$target.backup"
+            # Never overwrite an earlier backup: it may hold the only copy of
+            # the original (a settings.json that was never in any repo).
+            local bak="$target.backup"
+            [[ -e "$bak" || -L "$bak" ]] && bak="$target.backup.$(date +%Y%m%d%H%M%S)"
+            info "Backing up $target → $bak"
+            mv "$target" "$bak"
         elif [[ -L "$target" ]]; then
             # `-ef` follows symlinks and tests "same file" (inode), which works
             # for stow's relative symlinks AND any old absolute ones. Only

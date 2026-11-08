@@ -6,13 +6,14 @@ node = "lts"
 "go:github.com/kanywst/kwangmyong/cmd/kwangmyong" = "0.4.3"
 
 [tasks.lint]
-description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint)"
+description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint, vscode-ext lint)"
 # `|| exit 1` inside the for-loop is load-bearing: a bare `for` returns the
 # exit status of the *last* iteration, masking earlier failures.
 run = [
     "zsh -n zsh/.zshrc",
     "for f in zsh/conf.d/*.zsh; do [ -f \"$f\" ] || continue; echo == $f; zsh -n \"$f\" || exit 1; done",
-    "shellcheck -e SC1090,SC1091 install.sh tests/*.sh 'bin/.local/bin/bump' 'bin/.local/bin/bootstrap'",
+    "shellcheck -e SC1090,SC1091 install.sh tests/*.sh 'bin/.local/bin/bump' 'bin/.local/bin/bootstrap' 'bin/.local/bin/vscode-ext'",
+    "DOTFILES_DIR=. bin/.local/bin/vscode-ext lint",
     "npx --yes markdownlint-cli2 '**/*.md'",
     "actionlint .github/workflows/*.yml",
 ]
@@ -62,6 +63,10 @@ run = 'DOTFILES_DIR="${MISE_PROJECT_ROOT:-$PWD}" bin/.local/bin/bump --only flak
 [tasks.bootstrap]
 description = "Install non-brew layers (mise runtimes, rustup, krew, gh ext)"
 run = "bin/.local/bin/bootstrap"
+
+[tasks.vscode-export]
+description = "Add newly installed VS Code extensions to vscode/extensions.list (never removes; prune with `vscode-ext export --prune`)"
+run = 'DOTFILES_DIR="${MISE_PROJECT_ROOT:-$PWD}" bin/.local/bin/vscode-ext export'
 
 [tasks.hooks]
 description = "Install lefthook git hooks"

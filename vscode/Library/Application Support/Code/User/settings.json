@@ -1,0 +1,38 @@
+{
+    "editor.suggestSelection": "first",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+    "workbench.editorAssociations": {
+        "*.ipynb": "jupyter-notebook"
+    },
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    "[python]": {
+        "editor.formatOnType": true
+    },
+    "redhat.telemetry.enabled": true,
+    "html.format.indentInnerHtml": true,
+    "html.format.wrapAttributes": "force",
+    "[html]": {
+        "editor.defaultFormatter": "mohd-akram.vscode-html-format"
+    },
+    "go.toolsManagement.autoUpdate": true,
+    "editor.fontSize": 16,
+    "window.zoomLevel": -1,
+    "git.autofetch": true,
+    "workbench.colorCustomizations": {
+    },
+    "tabnine.experimentalAutoImports": true,
+    "workbench.colorTheme": "GitHub Dark",
+    "update.showReleaseNotes": false,
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "gitlens.ai.model": "openai:gpt-4o",
+    "ipynb.pasteImagesAsAttachments.enabled": false,
+    "githubPullRequests.pullBranch": "never",
+    "docker.extension.enableComposeLanguageServer": false,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "rust-analyzer.check.command": "clippy",
+    "diffEditor.ignoreTrimWhitespace": false
+}

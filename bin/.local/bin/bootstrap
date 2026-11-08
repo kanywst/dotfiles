@@ -6,7 +6,7 @@
 #   darwin-rebuild switch → nix-darwin: macOS defaults + brew bundle + mas apps
 #   bootstrap (this)    → the per-user managers nix can't declare:
 #                         mise runtimes, rustup toolchains, krew plugins,
-#                         gh extensions.
+#                         gh extensions, VS Code extensions.
 #
 # Every step is idempotent — re-running only installs what's missing. Run once
 # after `./install.sh` + `darwin-rebuild switch` on a fresh Mac; safe to re-run.
@@ -105,6 +105,20 @@ do_gh() {
     if ((failed)); then warn "gh: some extensions failed to install"; else ok "gh extensions ready"; fi
 }
 
+# ---- VS Code extensions ------------------------------------------------
+# The list is vscode/extensions.list; vscode-ext (same bin/ package) does the
+# install in one editor launch and reports any ID the editor couldn't find.
+do_vscode() {
+    have "${CODE_BIN:-code}" || { skip "${CODE_BIN:-code} CLI not on PATH — skipping VS Code extensions (install VS Code and its 'code' command, then run: vscode-ext install)"; return; }
+    local self_dir; self_dir="$(dirname "${BASH_SOURCE[0]}")"
+    info "vscode: installing extensions from vscode/extensions.list"
+    if DOTFILES_DIR="$DOTFILES_DIR" "$self_dir/vscode-ext" install; then
+        ok "VS Code extensions ready"
+    else
+        warn "vscode: some extensions failed to install"
+    fi
+}
+
 case "${1:-}" in
     -h|--help)
         awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
@@ -117,6 +131,7 @@ do_mise
 do_rustup
 do_krew
 do_gh
+do_vscode
 
 echo
 ok "bootstrap complete"
