@@ -257,11 +257,22 @@ do_darwin() {
     # instead of hanging on an invisible prompt.
     # DARWIN_MAS is read by the flake through getEnv just like USER, so it has to
     # survive sudo too - otherwise `DARWIN_MAS=1 bump` still skips the mas apps.
+    # DARWIN_SUDO_ASKPASS: the switch ends in `brew bundle`, which installs any
+    # missing cask, and a pkg cask (karabiner-elements, 2026-11-08) calls a bare
+    # sudo there. Activation runs it under its own `sudo --user`, in a fresh pty
+    # the up-front grant does not cover, inside timeout's background process
+    # group, so the prompt can't be answered. Activation drops the whole env, so
+    # the flake bakes this into homebrew.onActivation.extraEnv as SUDO_ASKPASS.
+    sudo_fail_fast darwin 'brew install --cask <name>, then rerun the switch'
+    local askpass="${SUDO_ASKPASS-}"
+    unset SUDO_ASKPASS   # for brew's sudo inside activation, not this one.
     if command -v darwin-rebuild >/dev/null 2>&1; then
         sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
+            "DARWIN_SUDO_ASKPASS=$askpass" \
             darwin-rebuild switch --impure --flake ".#$who"
     else
         sudo -n env "PATH=$path" "USER=$who" "DARWIN_MAS=${DARWIN_MAS-}" \
+            "DARWIN_SUDO_ASKPASS=$askpass" \
             nix run github:LnL7/nix-darwin/master#darwin-rebuild -- switch --impure --flake ".#$who"
     fi
     rc=$?
@@ -310,13 +321,19 @@ do_brew() {
 # Homebrew passes -A whenever SUDO_ASKPASS is set, which routes that prompt to a helper instead; this one
 # refuses, so the sudo fails in a second with a reason in the log and a note in
 # the summary. A valid grant never calls the helper, so nothing changes then.
+#
+# $1 is the step, $2 the hand-run fix to suggest. The helper lives at a fixed
+# path per step, one level above the run directory: do_darwin bakes that path
+# into the activation script through the flake, and a per-run path would make
+# every bump a new system generation. The script itself is rewritten each run,
+# so the note it appends still lands in this run's directory.
 sudo_fail_fast() {
     local dir="${BUMP_LOG%/*}" helper
-    helper="$dir/.sudo-askpass"
+    helper="${dir%/*}/.sudo-askpass-$1"
     {
         printf '#!/bin/sh\n'
-        printf 'echo "bump: sudo asked for a password mid-step (the up-front grant did not reach it) and was refused instead of hanging. Upgrade that one by hand in a terminal: brew upgrade --cask <name>" >&2\n'
-        printf 'echo "%s: sudo asked for a password mid-step and was refused instead of hanging (see the log for which cask). Upgrade it by hand: brew upgrade --cask <name>" >>"%s/notes"\n' "$1" "$dir"
+        printf 'echo "bump: sudo asked for a password mid-step (the up-front grant did not reach it) and was refused instead of hanging. Do that one by hand in a terminal: %s" >&2\n' "$2"
+        printf 'echo "%s: sudo asked for a password mid-step and was refused instead of hanging (see the log for which cask). Do it by hand: %s" >>"%s/notes"\n' "$1" "$2" "$dir"
         printf 'exit 1\n'
     } >"$helper" 2>/dev/null && chmod 700 "$helper" 2>/dev/null || return 0
     export SUDO_ASKPASS="$helper"
@@ -331,7 +348,7 @@ export -f sudo_fail_fast
 # cleanly instead, and the formula upgrades still run.
 do_brew_cask() {
     export HOMEBREW_NO_ASK=1
-    sudo_fail_fast brew-cask
+    sudo_fail_fast brew-cask 'brew upgrade --cask <name>'
     # `brew upgrade --cask` aborts on an untrusted cask exactly as the formula
     # side does. Probed per step rather than once for the run: the steps are
     # independent by design (a failed formula step does not stop this one), so

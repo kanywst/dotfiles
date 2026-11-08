@@ -480,6 +480,23 @@ run -- --only darwin
 assert_eq "an untrusted tap does not fail a switch that succeeded" "$RC" "0"
 assert_missing "a successful switch prints no trust report" "$OUT" "untrusted tap"
 
+# The switch ends in `brew bundle`, which installs a missing pkg cask with a bare
+# sudo inside activation's own `sudo --user` pty, where nothing can answer it.
+# The step hands the flake a refusing helper (baked into extraEnv), at a path
+# that is the same every run so the activation script does not churn.
+reset_stubs; rm -rf "$TMP/cache/bump"
+stub sudo "$SUDO_EXEC"
+# shellcheck disable=SC2016
+stub darwin-rebuild 'echo "SUDO_ASKPASS=${SUDO_ASKPASS-unset}"
+if [ -x "$DARWIN_SUDO_ASKPASS" ]; then "$DARWIN_SUDO_ASKPASS"; echo "ASKPASS rc=$?"; else echo "NO ASKPASS"; fi'
+run -- --only darwin
+DLOG=$(cat "$TMP"/cache/bump/*/darwin.log 2>/dev/null)
+assert_contains "the switch hands activation a refusing askpass helper" "$DLOG" "ASKPASS rc=1"
+assert_contains "the askpass is not applied to the switch's own sudo" "$DLOG" "SUDO_ASKPASS=unset"
+assert_contains "a refused activation sudo is reported at the end" "$OUT" "darwin: sudo asked for a password mid-step"
+if [[ -x "$TMP/cache/bump/.sudo-askpass-darwin" ]]; then ok "the darwin askpass sits at a fixed path"
+else bad "the darwin askpass sits at a fixed path" "no $TMP/cache/bump/.sudo-askpass-darwin"; fi
+
 # --- summary honesty -------------------------------------------------------
 reset_stubs
 rm -f "$STUB"/*

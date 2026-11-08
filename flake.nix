@@ -50,6 +50,14 @@
           HOMEBREW_BUNDLE_MAS_SKIP =
             builtins.concatStringsSep " " (map toString (builtins.attrValues masApps));
         };
+    # Set by `bump` (do_darwin): a helper that refuses a sudo prompt, so a pkg
+    # cask that `brew bundle` installs during activation fails at once instead
+    # of hanging on a password prompt nobody can answer. Homebrew passes
+    # `sudo -A` whenever SUDO_ASKPASS is set. A plain `darwin-rebuild switch`
+    # from a terminal leaves it unset and keeps the normal prompt.
+    askpassEnv =
+      let p = builtins.getEnv "DARWIN_SUDO_ASKPASS"; in
+      if p == "" then { } else { SUDO_ASKPASS = p; };
   in {
     homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
       pkgs = nixpkgs.legacyPackages.${system};
@@ -145,7 +153,7 @@
               extraEnv = {
                 HOMEBREW_NO_ANALYTICS = "1";
                 HOMEBREW_NO_ENV_HINTS = "1";
-              } // masSkip;
+              } // masSkip // askpassEnv;
             };
             # External taps referenced by the brews / casks below.
             taps = [
