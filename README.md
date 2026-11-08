@@ -446,12 +446,7 @@ Sudo is requested once up front, and only when a selected step actually needs
 it — `bump --only npm` never prompts. If the grant doesn't take, the steps that
 need root (`darwin`, `brew-cask`) are skipped cleanly and the rest still run.
 
-A sudo that Homebrew calls mid-step (a pkg cask's installer or uninstall script,
-including the `brew bundle` at the end of the switch) can't be answered, even
-under `-v`: the step runs in its own background process group. Those steps set
-`SUDO_ASKPASS` to a helper that refuses, so the sudo fails at once and the
-summary names the cask to install or upgrade by hand. A plain
-`darwin-rebuild switch` from a terminal keeps the normal prompt.
+A sudo that Homebrew calls mid-step (a pkg cask's installer or uninstall script, including the `brew bundle` at the end of the switch) can't be answered, even under `-v`: the step runs in its own background process group. Those steps set `SUDO_ASKPASS` to a helper that refuses, so the sudo fails at once and the summary names the cask to install or upgrade by hand. A plain `darwin-rebuild switch` from a terminal keeps the normal prompt.
 
 `cargo`/`go` binaries are covered by the `cargo` and `gup` steps, which skip
 themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
