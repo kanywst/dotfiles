@@ -4,7 +4,6 @@
     "charmbracelet/tap/crush",
     "charmbracelet/tap/vhs",
     "hashicorp/tap/terraform",
-    "kanywst/tap/approval-hub",
     "kanywst/tap/mcp-opa-authz",
     "kanywst/tap/wtfi2",
     "kanywst/tap/wtfi3",

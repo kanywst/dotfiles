@@ -151,7 +151,7 @@
             taps = [
               "anomalyco/tap"        # opencode
               "charmbracelet/tap"    # crush
-              "kanywst/tap"          # own tools: approval-hub, mcp-opa-authz, wtfi*, y509, brtc, ...
+              "kanywst/tap"          # own tools: mcp-opa-authz, wtfi*, y509, brtc, ...
               "ory/tap"              # ory cli
               "oven-sh/bun"          # bun
             ];
@@ -299,7 +299,6 @@
               # tags from source instead (checked 2026-10-05).
               "anomalyco/tap/opencode"
               "charmbracelet/tap/crush"
-              "kanywst/tap/approval-hub"
               "kanywst/tap/mcp-opa-authz"
               "kanywst/tap/wtfi2"
               "kanywst/tap/wtfi3"
