@@ -60,9 +60,6 @@ path=(
 # Go — mise activate handles GOROOT/GOPATH; modern Go (>= 1.10) auto-detects
 # GOROOT from the binary path, so don't pin it to brew's keg here.
 
-# Ollama — keep model resident
-export OLLAMA_KEEP_ALIVE="-1"
-
 # Envman
 [ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
 

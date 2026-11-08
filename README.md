@@ -433,7 +433,7 @@ need root (`darwin`, `brew-cask`) are skipped cleanly and the rest still run.
 `cargo`/`go` binaries are covered by the `cargo` and `gup` steps, which skip
 themselves unless [`cargo-update`][cargo-update] / [`gup`][gup] are installed.
 
-Casks that claim to update themselves (`auto_updates true`) are skipped by a plain `brew upgrade --cask`, and several here never did, so `brew-cask` checks each one: an app that already reports the new version is left alone, one that is behind is upgraded, and one that is behind but running, where the upgrade would quit it (Ghostty, Ollama), is reported at the end instead of being closed. `mise` also upgrades the dotfiles checkout's `mise.toml` (`mise -C`), because `mise upgrade` only sees the configs of the directory it starts in. `uv` runs `uv tool upgrade --all`.
+Casks that claim to update themselves (`auto_updates true`) are skipped by a plain `brew upgrade --cask`, and several here never did, so `brew-cask` checks each one: an app that already reports the new version is left alone, one that is behind is upgraded, and one that is behind but running, where the upgrade would quit it (Ghostty), is reported at the end instead of being closed. `mise` also upgrades the dotfiles checkout's `mise.toml` (`mise -C`), because `mise upgrade` only sees the configs of the directory it starts in. `uv` runs `uv tool upgrade --all`.
 
 After the summary, `bump` names any binary earlier on `PATH` than Homebrew's copy of the same tool (a stale `~/.local/bin/jq`, Rancher Desktop's kubectl). Every step can be green while the shell keeps running a copy no step updates, so this is the only place that shows up.
 

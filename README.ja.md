@@ -432,7 +432,7 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 `cargo`/`go` バイナリは `cargo` / `gup` ステップが面倒を見る。
 [`cargo-update`][cargo-update] / [`gup`][gup] が入っていなければ自分で skip する。
 
-素の `brew upgrade --cask` は「自分で更新する」と宣言した cask (`auto_updates true`) を全部飛ばすが、ここでは自己更新しないものが複数あった。そこで `brew-cask` は 1 つずつ判定する。アプリがもう新しい版なら触らない、古ければ上げる、古いが起動中で上げると終了させてしまうもの (Ghostty、Ollama) は閉じずに最後に報告する。`mise` は dotfiles の `mise.toml` も上げる (`mise -C`)。`mise upgrade` は起動したディレクトリの設定しか見ないため。`uv` は `uv tool upgrade --all`。
+素の `brew upgrade --cask` は「自分で更新する」と宣言した cask (`auto_updates true`) を全部飛ばすが、ここでは自己更新しないものが複数あった。そこで `brew-cask` は 1 つずつ判定する。アプリがもう新しい版なら触らない、古ければ上げる、古いが起動中で上げると終了させてしまうもの (Ghostty) は閉じずに最後に報告する。`mise` は dotfiles の `mise.toml` も上げる (`mise -C`)。`mise upgrade` は起動したディレクトリの設定しか見ないため。`uv` は `uv tool upgrade --all`。
 
 サマリの後に、Homebrew のコピーより `PATH` の前にいる同名バイナリ (古い `~/.local/bin/jq`、Rancher Desktop の kubectl など) を列挙する。全ステップ green のまま、どのステップも更新しないコピーをシェルが使い続けることがあり、それが見えるのはここだけ。
 

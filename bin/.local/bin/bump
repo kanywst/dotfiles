@@ -347,7 +347,7 @@ do_brew_cask() {
     # against 16.3.0 (checked 2026-11-04), with every run reporting green.
     #
     # Not a blanket --greedy-auto-updates, though: upgrading a cask runs its
-    # uninstall stanza, and for Ghostty and Ollama that is `quit`. Homebrew only
+    # uninstall stanza, and for Ghostty that is `quit`. Homebrew only
     # spares an app that is an ancestor of the brew process, so a run from a
     # herdr/tmux pane or another terminal would close every Ghostty window. So
     # each one is judged first (cask_greedy_plan): an app that already updated
