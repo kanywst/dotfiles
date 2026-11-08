@@ -378,8 +378,9 @@ do_brew_cask() {
 # One line per outdated auto_updates cask: <action>\t<token>\t<detail>, where
 # action is upgrade, current (its app already reports the cask's version or a
 # newer one), missing (the cask declares an app that is not there, so the
-# upgrade's uninstall half fails on it: Ollama.app, 2026-11-08), running (behind, its uninstall quits or signals it, and it is open
-# right now) or unknown (as running, but no process list could be read). Exits
+# upgrade's uninstall half fails on it: Ollama.app, 2026-11-08), running
+# (behind, its uninstall quits or signals it, and it is open right now) or
+# unknown (as running, but no process list could be read). Exits
 # non-zero when it cannot tell at all, and the caller then upgrades none.
 #
 # `launchctl` in an uninstall stanza is deliberately not "disruptive": it is how
