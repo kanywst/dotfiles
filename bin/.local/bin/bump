@@ -156,7 +156,13 @@ do_flake() { cd "$DOTFILES_DIR" && nix flake update; }
 # nix-darwin step down too. One untrusted `sqld` cost two of twelve steps in a
 # run, and neither error named the real problem anywhere near the top.
 #
-# This is the whole defense, not half of it. The declared side needs none:
+# It only sees what is installed, and brew loads more than that: on 2026-11-08
+# a `brew upgrade` that had just upgraded 19 formulae died on the archived,
+# never-installed kanywst/tap/sweep cask, so the probe passed and the step
+# failed anyway. Trusting the whole tap (`brew trust <owner>/<tap>`) is the
+# fix that covers that; the probe's job is to name what it can see.
+#
+# The declared side needs none:
 # nix-darwin writes every flake.nix entry into its Brewfile as `trusted: true`,
 # so `brew bundle` trusts those as it installs them. What is left over — and
 # what actually broke — is a tool installed by hand from a tap flake.nix never
