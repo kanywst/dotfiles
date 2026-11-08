@@ -303,20 +303,20 @@ do_brew() {
 # Homebrew calls a bare `sudo` (no -n) for cask uninstall scripts and pkg
 # installers, so when the pre-warmed grant does not reach it (seen on
 # karabiner-elements' remove_files.sh, 2026-11-08) sudo asks on /dev/tty behind
-# the spinner (stdin is /dev/null, but sudo reads the tty, not stdin). Typing
-# the password into it did not get through, and the step sat there until the
-# run was killed. Homebrew passes -A whenever
-# SUDO_ASKPASS is set, which routes that prompt to a helper instead; this one
+# the spinner (stdin is /dev/null, but sudo reads the tty, not stdin). It can
+# not be answered, --verbose included: the step runs under timeout(1), which puts
+# it in its own background process group, so sudo stops on SIGTTIN when it reads
+# and what is typed just echoes to the screen (seen with --verbose, 2026-11-08).
+# Homebrew passes -A whenever SUDO_ASKPASS is set, which routes that prompt to a helper instead; this one
 # refuses, so the sudo fails in a second with a reason in the log and a note in
 # the summary. A valid grant never calls the helper, so nothing changes then.
 sudo_fail_fast() {
-    [[ -n "${BUMP_SUDO_PROMPT_OK:-}" ]] && return 0
     local dir="${BUMP_LOG%/*}" helper
     helper="$dir/.sudo-askpass"
     {
         printf '#!/bin/sh\n'
-        printf 'echo "bump: sudo asked for a password mid-step (the up-front grant did not reach it); refused instead of hanging. Rerun: bump --only %s --verbose" >&2\n' "$1"
-        printf 'echo "%s: sudo asked for a password mid-step and was refused instead of hanging. Rerun: bump --only %s --verbose" >>"%s/notes"\n' "$1" "$1" "$dir"
+        printf 'echo "bump: sudo asked for a password mid-step (the up-front grant did not reach it) and was refused instead of hanging. Upgrade that one by hand in a terminal: brew upgrade --cask <name>" >&2\n'
+        printf 'echo "%s: sudo asked for a password mid-step and was refused instead of hanging (see the log for which cask). Upgrade it by hand: brew upgrade --cask <name>" >>"%s/notes"\n' "$1" "$dir"
         printf 'exit 1\n'
     } >"$helper" 2>/dev/null && chmod 700 "$helper" 2>/dev/null || return 0
     export SUDO_ASKPASS="$helper"
@@ -680,9 +680,7 @@ build_runner() {
     # invisible and only the watchdog ends it, 30 minutes later.
     local guard="trap ':' TERM; "
     if $VERBOSE; then
-        # No spinner here, so a mid-step sudo prompt is visible and answerable:
-        # tell sudo_fail_fast to leave it alone.
-        inner="${guard}set -uo pipefail; export BUMP_SUDO_PROMPT_OK=1; exec </dev/null > >(tee \"\$BUMP_LOG\") 2>&1; $fn"
+        inner="${guard}set -uo pipefail; exec </dev/null > >(tee \"\$BUMP_LOG\") 2>&1; $fn"
     else
         inner="${guard}set -uo pipefail; exec </dev/null >\"\$BUMP_LOG\" 2>&1; $fn"
     fi

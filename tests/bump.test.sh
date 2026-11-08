@@ -713,8 +713,11 @@ CASKLOG=$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)
 assert_contains "the cask step hands Homebrew a refusing askpass helper" "$CASKLOG" "ASKPASS rc=1"
 assert_contains "a refused mid-step sudo says why in the log" "$CASKLOG" "refused instead of hanging"
 assert_contains "a refused mid-step sudo is reported at the end" "$OUT" "brew-cask: sudo asked for a password mid-step"
+# --verbose too: the step is in timeout's background process group, so a sudo
+# prompt there stops on SIGTTIN and what is typed only echoes.
+rm -rf "$TMP/cache/bump"
 run -- --only brew-cask --verbose
-assert_contains "--verbose leaves a mid-step sudo prompt answerable" "$OUT" "NO ASKPASS"
+assert_contains "--verbose refuses a mid-step sudo prompt as well" "$OUT" "ASKPASS rc=1"
 
 # --- uv ---------------------------------------------------------------------
 reset_stubs
