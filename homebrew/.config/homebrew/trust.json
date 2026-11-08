@@ -21,5 +21,8 @@
     "kanywst/tap/prpr",
     "kanywst/tap/whosent",
     "kanywst/tap/y509"
+  ],
+  "trustedtaps": [
+    "kanywst/tap"
   ]
 }
