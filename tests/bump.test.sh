@@ -697,6 +697,25 @@ run -- --only brew
 assert_matches "the formula step upgrades formulae only" \
     "$(cat "$TMP"/cache/bump/*/brew.log 2>/dev/null)" '^BREW upgrade --formula$'
 
+# Homebrew's own sudo (cask uninstall scripts, pkg installers) has no -n, so a
+# grant that does not reach it prompted behind the spinner and hung. With
+# SUDO_ASKPASS set Homebrew uses -A, and the helper refuses at once.
+reset_stubs; rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in
+    trust) exit 1;;
+    outdated) echo "{\"casks\":[]}";;
+    upgrade) if [ -x "$SUDO_ASKPASS" ]; then "$SUDO_ASKPASS"; echo "ASKPASS rc=$?"; else echo "NO ASKPASS"; fi;;
+    *) :;;
+esac'
+run -- --only brew-cask
+CASKLOG=$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)
+assert_contains "the cask step hands Homebrew a refusing askpass helper" "$CASKLOG" "ASKPASS rc=1"
+assert_contains "a refused mid-step sudo says why in the log" "$CASKLOG" "refused instead of hanging"
+assert_contains "a refused mid-step sudo is reported at the end" "$OUT" "brew-cask: sudo asked for a password mid-step"
+run -- --only brew-cask --verbose
+assert_contains "--verbose leaves a mid-step sudo prompt answerable" "$OUT" "NO ASKPASS"
+
 # --- uv ---------------------------------------------------------------------
 reset_stubs
 rm -rf "$TMP/cache/bump"
