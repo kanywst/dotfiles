@@ -296,8 +296,23 @@ do_darwin() {
 # and prompts "proceed? [y/n]"). That prompt can run inside `gum spin`, which
 # hides stdout/stderr, so it would hang invisibly forever (same trap as the sudo
 # one). This is an unattended run, so disable ask-mode and just proceed.
+# Homebrew's curl has retries but no stall limit, so a download that stops
+# moving without closing just sits there: multipass's .pkg from GitHub did, and
+# the cask step burned the whole 30-minute watchdog on it (2026-11-15). A
+# curlrc that aborts a transfer slower than 1 KB/s for two minutes turns that
+# into an ordinary curl timeout, which Homebrew's --retry then retries. Written
+# into the run directory and only used when HOMEBREW_CURLRC isn't already set.
+brew_stall_guard() {
+    [[ -n "${HOMEBREW_CURLRC-}" ]] && return 0
+    local rc="${BUMP_LOG%/*}/curlrc"
+    printf '%s\n' 'speed-limit = 1024' 'speed-time = 120' >"$rc" 2>/dev/null || return 0
+    export HOMEBREW_CURLRC="$rc"
+}
+export -f brew_stall_guard
+
 do_brew() {
     export HOMEBREW_NO_ASK=1   # runs in its own bash -c subshell; scope is this step.
+    brew_stall_guard
     # Up front here, unlike in do_darwin: `brew upgrade` aborts on this condition
     # without upgrading anything, so there is nothing to lose by failing first —
     # and doing so skips a catalog refresh that only earns a worse error.
@@ -375,6 +390,7 @@ export -f sudo_askpass
 do_brew_cask() {
     export HOMEBREW_NO_ASK=1
     sudo_askpass brew-cask 'brew upgrade --cask <name>'
+    brew_stall_guard
     # `brew upgrade --cask` aborts on an untrusted cask exactly as the formula
     # side does. Probed per step rather than once for the run: the steps are
     # independent by design (a failed formula step does not stop this one), so
@@ -384,6 +400,10 @@ do_brew_cask() {
     # password) must not keep every auto_updates cask behind with it.
     local rc=0
     brew upgrade --cask || rc=$?
+    # 143 is the watchdog's TERM. The runner shell survives it on purpose (see
+    # build_runner), so without this the greedy pass below started a second
+    # brew for the 30s until the kill-after, against a half-finished upgrade.
+    ((rc == 143)) && return $rc
     # A bare `brew upgrade --cask` skips every cask that declares `auto_updates
     # true`, on the theory that the app updates itself. Several here never did:
     # copilot-cli sat at 1.0.24 against 1.0.105 and Karabiner-Elements at 16.0.0

@@ -745,6 +745,37 @@ rm -rf "$TMP/cache/bump"
 run -- --only brew-cask --verbose
 assert_contains "--verbose refuses a mid-step sudo prompt as well" "$OUT" "ASKPASS rc=1"
 
+# Homebrew's curl has no stall limit, so a dead download sat out the watchdog.
+reset_stubs; rm -rf "$TMP/cache/bump"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in
+    trust) exit 1;;
+    outdated) echo "{\"casks\":[]}";;
+    upgrade) echo "CURLRC=${HOMEBREW_CURLRC-unset}"; cat "$HOMEBREW_CURLRC";;
+    *) :;;
+esac'
+run -- --only brew-cask
+CASKLOG=$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)
+assert_contains "the cask step hands Homebrew a stall-limiting curlrc" "$CASKLOG" "speed-time = 120"
+run -- --only brew
+assert_contains "the formula step does too" "$(cat "$TMP"/cache/bump/*/brew.log 2>/dev/null)" "speed-limit = 1024"
+
+# A watchdog TERM ends the cask step instead of starting the greedy pass.
+# Control first: with an ordinary failure the greedy pass does run.
+for code in 1 143; do
+    reset_stubs; rm -rf "$TMP/cache/bump" "$TMP/outdated-called"
+    stub brew "case \"\$1\" in
+    trust) exit 1;;
+    outdated) : >'$TMP/outdated-called'; echo '{\"casks\":[]}';;
+    upgrade) exit $code;;
+    *) :;;
+esac"
+    run -- --only brew-cask
+    [[ -e "$TMP/outdated-called" ]] && echo yes || echo no
+done >"$TMP/greedy-calls"
+assert_eq "a failed cask upgrade still runs the greedy pass, a TERMed one does not" \
+    "$(tr '\n' ' ' <"$TMP/greedy-calls")" "yes no "
+
 # A multipass upgrade calls sudo about ten times. After one refusal the rest
 # refuse without asking again, and the summary says it once, not ten times.
 reset_stubs; rm -rf "$TMP/cache/bump"
