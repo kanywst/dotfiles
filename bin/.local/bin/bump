@@ -11,8 +11,9 @@
 #
 # Runs every step unattended — no per-step confirmation. The only interactive
 # point is sudo, which is asked for up front and then kept warm for the whole
-# run (darwin-rebuild needs it immediately; a Pkg cask upgrade needs it ~25
-# minutes in, long after the 5-minute sudo timestamp would have lapsed). sudo is
+# run (darwin-rebuild needs it immediately). Homebrew drops that grant before its
+# own sudo, so a pkg cask that needs root asks again in a macOS password dialog
+# (see sudo_askpass). sudo is
 # only requested when a selected step actually needs it, so e.g. `bump --only
 # npm` never prompts.
 #
@@ -259,11 +260,11 @@ do_darwin() {
     # survive sudo too - otherwise `DARWIN_MAS=1 bump` still skips the mas apps.
     # DARWIN_SUDO_ASKPASS: the switch ends in `brew bundle`, which installs any
     # missing cask, and a pkg cask (karabiner-elements, 2026-11-08) calls a bare
-    # sudo there. Activation runs it under its own `sudo --user`, in a fresh pty
-    # the up-front grant does not cover, inside timeout's background process
-    # group, so the prompt can't be answered. Activation drops the whole env, so
+    # sudo there. brew resets the sudo timestamp first (see sudo_askpass), and
+    # activation runs it inside timeout's background process group, so the
+    # terminal prompt can't be answered; the helper asks in a dialog instead. Activation drops the whole env, so
     # the flake bakes this into homebrew.onActivation.extraEnv as SUDO_ASKPASS.
-    sudo_fail_fast darwin 'brew install --cask <name>, then rerun the switch'
+    sudo_askpass darwin 'brew install --cask <name>, then rerun the switch'
     local askpass="${SUDO_ASKPASS-}"
     unset SUDO_ASKPASS   # for brew's sudo inside activation, not this one.
     if command -v darwin-rebuild >/dev/null 2>&1; then
@@ -312,33 +313,58 @@ do_brew() {
 }
 
 # Homebrew calls a bare `sudo` (no -n) for cask uninstall scripts and pkg
-# installers, so when the pre-warmed grant does not reach it (seen on
-# karabiner-elements' remove_files.sh, 2026-11-08) sudo asks on /dev/tty behind
-# the spinner (stdin is /dev/null, but sudo reads the tty, not stdin). It can
-# not be answered, --verbose included: the step runs under timeout(1), which puts
+# installers, and the up-front grant can never reach it: before its first sudo,
+# every brew process runs `sudo --reset-timestamp` on purpose (utils/sudo.sh,
+# Homebrew 357e0b1, 2026-09-30; at startup since 7c5affa, 2025-06), so the cached
+# credential is gone by the time a cask asks. The prompt can't be answered on the
+# terminal either, --verbose included: the step runs under timeout(1), which puts
 # it in its own background process group, so sudo stops on SIGTTIN when it reads
-# and what is typed just echoes to the screen (seen with --verbose, 2026-11-08).
-# Homebrew passes -A whenever SUDO_ASKPASS is set, which routes that prompt to a helper instead; this one
-# refuses, so the sudo fails in a second with a reason in the log and a note in
-# the summary. A valid grant never calls the helper, so nothing changes then.
+# /dev/tty and what is typed only echoes (seen 2026-11-08).
+#
+# Homebrew passes -A whenever SUDO_ASKPASS is set, so the prompt goes to this
+# helper instead, which asks in a macOS password dialog. Homebrew resets once per
+# process, so one brew run asks at most once (three times on a wrong password,
+# sudo's own retry). If the dialog can't be shown, is cancelled or times out, the
+# helper refuses, so the sudo fails in a second with a reason in the log and a
+# note in the summary, and every later sudo in the same run refuses without
+# asking again (a multipass upgrade calls sudo about ten times).
 #
 # $1 is the step, $2 the hand-run fix to suggest. The helper lives at a fixed
 # path per step, one level above the run directory: do_darwin bakes that path
 # into the activation script through the flake, and a per-run path would make
 # every bump a new system generation. The script itself is rewritten each run,
-# so the note it appends still lands in this run's directory.
-sudo_fail_fast() {
-    local dir="${BUMP_LOG%/*}" helper
+# so the note it appends still lands in this run's directory. osascript's path
+# is resolved here and written in, since Homebrew and activation both run the
+# helper with a trimmed PATH.
+sudo_askpass() {
+    local dir="${BUMP_LOG%/*}" helper osa sq="'\\''"
     helper="${dir%/*}/.sudo-askpass-$1"
+    osa=$(command -v osascript 2>/dev/null) || osa=
     {
         printf '#!/bin/sh\n'
-        printf 'echo "bump: sudo asked for a password mid-step (the up-front grant did not reach it) and was refused instead of hanging. Do that one by hand in a terminal: %s" >&2\n' "$2"
-        printf 'echo "%s: sudo asked for a password mid-step and was refused instead of hanging (see the log for which cask). Do it by hand: %s" >>"%s/notes"\n' "$1" "$2" "$dir"
-        printf 'exit 1\n'
+        printf "step='%s' fix='%s' dir='%s' osa='%s'\n" \
+            "${1//\'/$sq}" "${2//\'/$sq}" "${dir//\'/$sq}" "${osa//\'/$sq}"
+        cat <<'HELPER'
+refused="$dir/.sudo-refused-$step"
+if [ ! -e "$refused" ] && [ -n "$osa" ]; then
+    pw=$("$osa" -e 'on run argv' \
+        -e 'set r to display dialog (item 1 of argv) default answer "" with hidden answer with title "bump" with icon caution giving up after 300' \
+        -e 'if gave up of r then error number -128' \
+        -e 'return text returned of r' \
+        -e 'end run' \
+        "bump ($step): Homebrew needs your password to finish (it drops the grant bump asked for up front). ${1:-Password:}" 2>/dev/null) \
+        && [ -n "$pw" ] && { printf '%s\n' "$pw"; exit 0; }
+fi
+: >"$refused"
+echo "bump: sudo asked for a password mid-step and the dialog was cancelled or could not be shown, so it was refused instead of hanging. Do that one by hand in a terminal: $fix" >&2
+note="$step: sudo asked for a password mid-step and was refused (dialog cancelled or unavailable; see the log for which cask). Do it by hand: $fix"
+grep -qxF "$note" "$dir/notes" 2>/dev/null || echo "$note" >>"$dir/notes"
+exit 1
+HELPER
     } >"$helper" 2>/dev/null && chmod 700 "$helper" 2>/dev/null || return 0
     export SUDO_ASKPASS="$helper"
 }
-export -f sudo_fail_fast
+export -f sudo_askpass
 
 # Casks are their own step because they are the part that needs root mid-run: a
 # Pkg-artifact cask (multipass) shells out to `sudo launchctl`/`pkgutil` to tear
@@ -348,7 +374,7 @@ export -f sudo_fail_fast
 # cleanly instead, and the formula upgrades still run.
 do_brew_cask() {
     export HOMEBREW_NO_ASK=1
-    sudo_fail_fast brew-cask 'brew upgrade --cask <name>'
+    sudo_askpass brew-cask 'brew upgrade --cask <name>'
     # `brew upgrade --cask` aborts on an untrusted cask exactly as the formula
     # side does. Probed per step rather than once for the run: the steps are
     # independent by design (a failed formula step does not stop this one), so
@@ -1396,8 +1422,9 @@ fi
 # reached multipass (a Pkg cask, so `sudo launchctl`/`pkgutil`) ~25 minutes in.
 # sudo writes that prompt straight to /dev/tty, which the gum spinner is busy
 # repainting, so it is invisible in practice and the run just sits on it until
-# the watchdog kills the step. Refreshing in the background keeps every later
-# sudo non-interactive.
+# the watchdog kills the step. Refreshing in the background keeps bump's own
+# later sudo non-interactive. It can't help Homebrew's: brew resets the timestamp
+# before its first sudo (see sudo_askpass), which also ends this refresher.
 #
 # `sudo -n -v` so the refresher itself can never become the thing that prompts:
 # if the grant is revoked mid-run it exits, and the step's own sudo then fails

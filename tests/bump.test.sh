@@ -113,6 +113,9 @@ reset_stubs() {
     mkdir -p "$TMP/rustup/toolchains"
     # No atuin session file is seeded: nothing reads one any more, and having it
     # here is what made the wrong guard look correct in the first place.
+    # The sudo askpass helper asks in an osascript dialog. Default to a cancel,
+    # so no test can pop a real password dialog on the machine running it.
+    stub osascript 'exit 1'
 }
 
 # run [env assignments...] -- <bump args...>; sets $OUT and $RC.
@@ -482,8 +485,9 @@ assert_missing "a successful switch prints no trust report" "$OUT" "untrusted ta
 
 # The switch ends in `brew bundle`, which installs a missing pkg cask with a bare
 # sudo inside activation's own `sudo --user` pty, where nothing can answer it.
-# The step hands the flake a refusing helper (baked into extraEnv), at a path
-# that is the same every run so the activation script does not churn.
+# The step hands the flake an askpass helper (baked into extraEnv), at a path
+# that is the same every run so the activation script does not churn. The
+# dialog is cancelled here (reset_stubs), so the helper refuses.
 reset_stubs; rm -rf "$TMP/cache/bump"
 stub sudo "$SUDO_EXEC"
 # shellcheck disable=SC2016
@@ -491,7 +495,7 @@ stub darwin-rebuild 'echo "SUDO_ASKPASS=${SUDO_ASKPASS-unset}"
 if [ -x "$DARWIN_SUDO_ASKPASS" ]; then "$DARWIN_SUDO_ASKPASS"; echo "ASKPASS rc=$?"; else echo "NO ASKPASS"; fi'
 run -- --only darwin
 DLOG=$(cat "$TMP"/cache/bump/*/darwin.log 2>/dev/null)
-assert_contains "the switch hands activation a refusing askpass helper" "$DLOG" "ASKPASS rc=1"
+assert_contains "the switch hands activation an askpass helper that refuses on cancel" "$DLOG" "ASKPASS rc=1"
 assert_contains "the askpass is not applied to the switch's own sudo" "$DLOG" "SUDO_ASKPASS=unset"
 assert_contains "a refused activation sudo is reported at the end" "$OUT" "darwin: sudo asked for a password mid-step"
 if [[ -x "$TMP/cache/bump/.sudo-askpass-darwin" ]]; then ok "the darwin askpass sits at a fixed path"
@@ -718,9 +722,10 @@ run -- --only brew
 assert_matches "the formula step upgrades formulae only" \
     "$(cat "$TMP"/cache/bump/*/brew.log 2>/dev/null)" '^BREW upgrade --formula$'
 
-# Homebrew's own sudo (cask uninstall scripts, pkg installers) has no -n, so a
-# grant that does not reach it prompted behind the spinner and hung. With
-# SUDO_ASKPASS set Homebrew uses -A, and the helper refuses at once.
+# Homebrew's own sudo (cask uninstall scripts, pkg installers) has no -n, and
+# brew resets the sudo timestamp before it, so it prompted behind the spinner
+# and hung. With SUDO_ASKPASS set Homebrew uses -A: the helper asks in a dialog,
+# and refuses at once when that is cancelled.
 reset_stubs; rm -rf "$TMP/cache/bump"
 # shellcheck disable=SC2016
 stub brew 'case "$1" in
@@ -731,7 +736,7 @@ stub brew 'case "$1" in
 esac'
 run -- --only brew-cask
 CASKLOG=$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)
-assert_contains "the cask step hands Homebrew a refusing askpass helper" "$CASKLOG" "ASKPASS rc=1"
+assert_contains "a cancelled askpass dialog refuses the sudo" "$CASKLOG" "ASKPASS rc=1"
 assert_contains "a refused mid-step sudo says why in the log" "$CASKLOG" "refused instead of hanging"
 assert_contains "a refused mid-step sudo is reported at the end" "$OUT" "brew-cask: sudo asked for a password mid-step"
 # --verbose too: the step is in timeout's background process group, so a sudo
@@ -739,6 +744,38 @@ assert_contains "a refused mid-step sudo is reported at the end" "$OUT" "brew-ca
 rm -rf "$TMP/cache/bump"
 run -- --only brew-cask --verbose
 assert_contains "--verbose refuses a mid-step sudo prompt as well" "$OUT" "ASKPASS rc=1"
+
+# A multipass upgrade calls sudo about ten times. After one refusal the rest
+# refuse without asking again, and the summary says it once, not ten times.
+reset_stubs; rm -rf "$TMP/cache/bump"
+OSA_CALLS="$TMP/osa-calls"; rm -f "$OSA_CALLS"
+stub osascript "echo x >>'$OSA_CALLS'; exit 1"
+# shellcheck disable=SC2016
+stub brew 'case "$1" in
+    trust) exit 1;;
+    outdated) echo "{\"casks\":[]}";;
+    upgrade) for i in 1 2 3; do "$SUDO_ASKPASS"; done;;
+    *) :;;
+esac'
+run -- --only brew-cask
+assert_eq "a refused dialog is not shown again in the same run" "$(wc -l <"$OSA_CALLS" | tr -d ' ')" "1"
+assert_eq "a repeated refusal is noted once" \
+    "$(grep -c 'brew-cask: sudo asked for a password mid-step' <<<"$OUT")" "1"
+
+# The dialog's answer is what sudo gets as the password.
+reset_stubs; rm -rf "$TMP/cache/bump"
+stub osascript 'echo hunter2'
+# shellcheck disable=SC2016
+stub brew 'case "$1" in
+    trust) exit 1;;
+    outdated) echo "{\"casks\":[]}";;
+    upgrade) pw=$("$SUDO_ASKPASS" "Password:"); echo "ASKPASS rc=$? pw=$pw";;
+    *) :;;
+esac'
+run -- --only brew-cask
+assert_contains "the askpass hands sudo the password typed in the dialog" \
+    "$(cat "$TMP"/cache/bump/*/brew-cask.log 2>/dev/null)" "ASKPASS rc=0 pw=hunter2"
+assert_missing "an answered dialog leaves no note" "$OUT" "sudo asked for a password mid-step"
 
 # --- uv ---------------------------------------------------------------------
 reset_stubs

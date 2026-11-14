@@ -50,9 +50,10 @@
           HOMEBREW_BUNDLE_MAS_SKIP =
             builtins.concatStringsSep " " (map toString (builtins.attrValues masApps));
         };
-    # Set by `bump` (do_darwin): a helper that refuses a sudo prompt, so a pkg
-    # cask that `brew bundle` installs during activation fails at once instead
-    # of hanging on a password prompt nobody can answer. Homebrew passes
+    # Set by `bump` (do_darwin): a helper that asks for a sudo password in a
+    # macOS dialog (and refuses if that is cancelled), so a pkg cask that
+    # `brew bundle` installs during activation doesn't hang on a terminal
+    # prompt nobody can answer. Homebrew passes
     # `sudo -A` whenever SUDO_ASKPASS is set. A plain `darwin-rebuild switch`
     # from a terminal leaves it unset and keeps the normal prompt.
     askpassEnv =

@@ -445,7 +445,7 @@ sudo は最初に一度だけ、しかも **root が要るステップが選ば�
 (`bump --only npm` は聞かない)。権限が取れなかった場合は `darwin` / `brew-cask` を
 綺麗に skip して残りは走らせる。
 
-ステップの途中で Homebrew が呼ぶ sudo (pkg cask の installer や uninstall スクリプト。switch 末尾の `brew bundle` も含む) には、`-v` でも答えられない。ステップが独立した background process group で走るため。そこでこれらのステップは `SUDO_ASKPASS` に拒否するだけの helper を設定し、sudo を即失敗させて、手で入れる / 上げるべき cask をサマリに出す。ターミナルから素の `darwin-rebuild switch` を叩いた場合は通常どおりプロンプトが出る。
+ステップの途中で Homebrew が呼ぶ sudo (pkg cask の installer や uninstall スクリプト。switch 末尾の `brew bundle` も含む) には、最初に取った sudo が効かない。brew は毎回、最初の sudo の前に `sudo --reset-timestamp` を実行するため。ターミナルからも `-v` でも答えられない。ステップが独立した background process group で走るため。そこでこれらのステップは `SUDO_ASKPASS` に macOS のパスワードダイアログを出す helper を設定する (brew 1 回につき最大 1 回)。キャンセルするか 5 分放置すると sudo は即失敗し、同じ run の以降の sudo は聞き直さず、手で入れる / 上げるべき cask をサマリに出す。ターミナルから素の `darwin-rebuild switch` を叩いた場合は通常どおりプロンプトが出る。
 
 `cargo`/`go` バイナリは `cargo` / `gup` ステップが面倒を見る。
 [`cargo-update`][cargo-update] / [`gup`][gup] が入っていなければ自分で skip する。
