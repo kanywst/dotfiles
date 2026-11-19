@@ -3,7 +3,7 @@
 
 [tools]
 node = "lts"
-"go:github.com/kanywst/kwangmyong/cmd/kwangmyong" = "0.4.3"
+"go:github.com/kanywst/kwangmyong/cmd/kwangmyong" = "0.5.0"
 
 [tasks.lint]
 description = "Run all linters (zsh -n, shellcheck, markdownlint, actionlint, vscode-ext lint)"
